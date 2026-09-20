@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware for the Waveshare RP2350-One
 
-Security provisioning is implemented and tested with an offline OTP model; irreversible on-board validation is still pending.
+OTP initialization, Secure Boot / Lock and signed updates have been tested on an RP2350-One (A2). Its [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) still apply.
 
 ## Build
 
@@ -15,7 +15,7 @@ cmake -S . -B build -G Ninja -DPICO_SDK_PATH=/path/to/pico-sdk
 cmake --build build
 ```
 
-Enter BOOTSEL mode and copy `build/pico_all.uf2` to the board's USB drive; existing credentials from upstream firmware are not migrated
+Enter BOOTSEL mode and copy `build/pico_all.uf2` to the board's USB drive. With Secure Boot enabled, sign it with the registered key first. Existing credentials from upstream firmware are not migrated.
 
 ## Use
 

@@ -4,7 +4,7 @@
 
 面向 Waveshare RP2350-One 的 FIDO2/U2F、OpenPGP/PIV、SmartCard-HSM 三合一固件
 
-安全配置已实现并通过离线 OTP 模型测试；不可逆的实机验证仍待完成。
+已在 RP2350-One（A2）实测 OTP 初始化、Secure Boot / Lock 和签名更新；A2 的[硬件安全勘误](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/)仍适用。
 
 ## 构建
 
@@ -15,7 +15,7 @@ cmake -S . -B build -G Ninja -DPICO_SDK_PATH=/path/to/pico-sdk
 cmake --build build
 ```
 
-进入 BOOTSEL 模式，将 `build/pico_all.uf2` 复制到开发板的 USB 磁盘；不迁移上游固件中的既有凭据
+进入 BOOTSEL 模式，将 `build/pico_all.uf2` 复制到开发板的 USB 磁盘。已启用 Secure Boot 时，须先用已登记的密钥签名。不迁移上游固件中的既有凭据。
 
 ## 使用
 
