@@ -72,6 +72,10 @@ static inline void ws2812_program_init(PIO pio, uint sm, uint offset, uint pin, 
 
 static void led_driver_init_ws2812(void) {
 #ifdef WAVESHARE_RP2350_ONE
+    if (!phy_data.led_brightness_present) {
+        phy_data.led_brightness = 1;
+        phy_data.led_brightness_present = true;
+    }
     // This board's RGB LED uses RGB byte order; preserve explicit overrides.
     if (!phy_data.led_order_present) {
         phy_data.led_order = PHY_LED_ORDER_RGB;
@@ -136,9 +140,6 @@ static inline void ws2812_put_pixel(uint32_t u32_pixel) {
 }
 
 static void led_driver_color_ws2812(uint8_t color, uint32_t led_brightness, float progress) {
-    if (!(phy_data.opts & PHY_OPT_DIMM)) {
-        progress = progress >= 0.5 ? 1 : 0;
-    }
     uint32_t led_phy_btness = phy_data.led_brightness_present ? MIN(phy_data.led_brightness, MAX_BTNESS) : MAX_BTNESS;
 
     float brightness = ((float)led_brightness / MAX_BTNESS) * ((float)led_phy_btness / MAX_BTNESS) * progress;

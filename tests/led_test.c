@@ -12,8 +12,10 @@ static uint32_t board_millis(void) { return now; }
 
 static uint8_t color;
 static uint32_t brightness;
+static float output_progress;
 static void capture(uint8_t c, uint32_t b, float progress) {
-    assert(progress == 0.0f || progress == 1.0f);
+    assert(progress >= 0.0f && progress <= 1.0f);
+    output_progress = progress;
     color = c;
     brightness = b;
 }
@@ -24,7 +26,29 @@ static void mode(uint32_t m, uint32_t t) { led_set_mode(m); tick(t); }
 int main(void) {
     led_driver = &sink;
     mode(MODE_MOUNTED, 100);
-    assert(color == LED_COLOR_GREEN && brightness == 3);
+    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(output_progress == 1.0f);
+    float previous = output_progress;
+    for (uint32_t t = 120; t <= 2100; t += 20) {
+        tick(t);
+        assert(output_progress <= previous);
+        previous = output_progress;
+    }
+    assert(color == LED_COLOR_OFF && output_progress == 0.0f);
+    for (uint32_t t = 2120; t <= 4100; t += 20) {
+        tick(t);
+        assert(output_progress >= previous);
+        previous = output_progress;
+    }
+    assert(output_progress == 1.0f);
+    // Short requests must not restart the breath at its brightest point.
+    tick(5100);
+    float midpoint = output_progress;
+    assert(midpoint > 0.49f && midpoint < 0.51f);
+    mode(MODE_PROCESSING, 5100);
+    assert(output_progress == midpoint);
+    mode(MODE_MOUNTED, 5100);
+    assert(output_progress == midpoint);
     tick(10000);
     assert(color == LED_COLOR_GREEN);
     mode(MODE_PROCESSING, 20000);
@@ -55,19 +79,19 @@ int main(void) {
     tick(22540);
     assert(color == LED_COLOR_OFF);
     tick(22720);
-    assert(color == LED_COLOR_GREEN && brightness == 3);
+    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
 
     led_blink_n_times(3, LED_COLOR_GREEN, 180, 180);
     tick(23000);
     mode(MODE_BUTTON, 23001);
     assert(color == LED_COLOR_YELLOW);
     mode(MODE_MOUNTED, 23002);
-    assert(color == LED_COLOR_GREEN && brightness == 3);
+    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
     led_blink_n_times(1, LED_COLOR_RED, 180, 180);
     mode(MODE_SUSPENDED, 23003);
     assert(color == LED_COLOR_OFF);
     mode(MODE_MOUNTED, 23004);
-    assert(color == LED_COLOR_GREEN && brightness == 3);
+    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
 
     mode(MODE_BUTTON, UINT32_MAX - 100);
     tick(198);
@@ -77,7 +101,7 @@ int main(void) {
     mode(MODE_MOUNTED, 500);
     mode(MODE_PROCESSING, 510);
     mode(MODE_MOUNTED, 600);
-    assert(color == LED_COLOR_GREEN && brightness == 3);
+    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
     mode(MODE_NOT_MOUNTED, 700);
     assert(color == LED_COLOR_MAGENTA);
     tick(900);
@@ -86,5 +110,5 @@ int main(void) {
     assert(color == LED_COLOR_MAGENTA);
     led_off_all();
     assert(color == LED_COLOR_OFF);
-    puts("PASS LED timing, prompt priority, suspend, notification and clock wrap");
+    puts("PASS LED breathing, polling continuity, prompt priority, timing and clock wrap");
 }

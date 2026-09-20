@@ -51,12 +51,14 @@ void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t of
     blink_pending = true;
 }
 
-static void led_render(uint8_t color, uint32_t brightness, bool on) {
+static void led_render(uint8_t color, uint32_t brightness, float progress) {
     static uint32_t last_frame = UINT32_MAX;
     if (!led_driver) return;
-    uint32_t frame = on ? (brightness << 8) | color : 0;
+    uint32_t level = (uint32_t)(progress * 255.0f + 0.5f);
+    bool on = level != 0;
+    uint32_t frame = on ? (level << 16) | (brightness << 8) | color : 0;
     if (frame != last_frame) {
-        led_driver->set_color(on ? color : LED_COLOR_OFF, on ? brightness : 0, on ? 1.0f : 0.0f);
+        led_driver->set_color(on ? color : LED_COLOR_OFF, on ? brightness : 0, (float)level / 255.0f);
         last_frame = frame;
     }
 }
@@ -64,11 +66,17 @@ static void led_render(uint8_t color, uint32_t brightness, bool on) {
 void led_blinking_task(void) {
     static uint32_t previous_mode = UINT32_MAX;
     static uint32_t mode_started = 0;
+    static uint32_t breath_started = 0;
+    static bool breath_initialized = false;
     static bool blink_active = false;
     static uint32_t blink_started, active_on, active_off;
     static uint8_t active_count, active_color;
     uint32_t now = board_millis();
     uint32_t mode = led_mode;
+    if (!breath_initialized) {
+        breath_started = now;
+        breath_initialized = true;
+    }
     if (mode != previous_mode) {
         previous_mode = mode;
         mode_started = now;
@@ -98,6 +106,14 @@ void led_blinking_task(void) {
     }
     // Avoid turning routine, short host polling into visible flicker.
     if (mode == MODE_PROCESSING && now - mode_started < 150) mode = MODE_MOUNTED;
+    if (mode == MODE_MOUNTED) {
+        // Four-second smooth breathing; short host polling preserves its phase.
+        uint32_t phase = (((now - breath_started) / 20u) * 20u) % 4000u;
+        float ramp = (float)(phase < 2000u ? 2000u - phase : phase - 2000u) / 2000.0f;
+        float progress = ramp * ramp * (3.0f - 2.0f * ramp);
+        led_render(LED_COLOR_GREEN, MAX_BTNESS, progress);
+        return;
+    }
     uint32_t on_ms = (mode & LED_ON_MASK) >> LED_ON_SHIFT;
     uint32_t off_ms = (mode & LED_OFF_MASK) >> LED_OFF_SHIFT;
     bool on = on_ms != 0 && (off_ms == 0 || (now - mode_started) % (on_ms + off_ms) < on_ms);
