@@ -195,6 +195,11 @@ static inline void secure_bzero(void *ptr, size_t len) {
 }
 
 static void __attribute__((noreturn, noinline)) usb_secure_reboot_now(void) {
+    led_set_mode(MODE_UPDATE);
+    led_blinking_task();
+    // Finish transmitting/latching the RGB frame before resetting PIO in ROM.
+    busy_wait_us_32(200);
+
     uintptr_t heap_start = (uintptr_t) &__end__;
     uintptr_t heap_end = (uintptr_t) &__HeapLimit;
     uintptr_t stack0_start = (uintptr_t) &__StackBottom;

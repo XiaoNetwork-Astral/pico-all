@@ -56,7 +56,7 @@ int main(void) {
     tick(20149);
     assert(color == LED_COLOR_GREEN);
     tick(20150);
-    assert(color == LED_COLOR_BLUE);
+    assert(color == LED_COLOR_GREEN);
 
     // A presence request starts visibly on, independent of clock phase.
     mode(MODE_BUTTON, 20793);
@@ -108,6 +108,11 @@ int main(void) {
     assert(color == LED_COLOR_OFF);
     tick(2700);
     assert(color == LED_COLOR_MAGENTA);
+    led_blink_n_times(2, LED_COLOR_RED, 180, 180);
+    mode(MODE_UPDATE, 2800);
+    assert(color == LED_COLOR_BLUE && output_progress == 1.0f);
+    tick(4000);
+    assert(color == LED_COLOR_BLUE && output_progress == 1.0f);
     led_off_all();
     assert(color == LED_COLOR_OFF);
     puts("PASS LED breathing, polling continuity, prompt priority, timing and clock wrap");

@@ -81,8 +81,8 @@ void led_blinking_task(void) {
         previous_mode = mode;
         mode_started = now;
     }
-    // Presence prompts and USB disconnect/suspend take priority over notifications.
-    if (mode == MODE_BUTTON || mode == MODE_NOT_MOUNTED || mode == MODE_SUSPENDED) {
+    // Presence, update and USB state take priority over notifications.
+    if (mode == MODE_BUTTON || mode == MODE_NOT_MOUNTED || mode == MODE_SUSPENDED || mode == MODE_UPDATE) {
         blink_pending = false;
         blink_active = false;
     }
@@ -104,8 +104,8 @@ void led_blinking_task(void) {
         }
         blink_active = false;
     }
-    // Avoid turning routine, short host polling into visible flicker.
-    if (mode == MODE_PROCESSING && now - mode_started < 150) mode = MODE_MOUNTED;
+    // Ordinary requests retain the idle indication and breathing phase.
+    if (mode == MODE_PROCESSING) mode = MODE_MOUNTED;
     if (mode == MODE_MOUNTED) {
         // Two-second smooth breathing; short host polling preserves its phase.
         uint32_t phase = (((now - breath_started) / 10u) * 10u) % 2000u;
