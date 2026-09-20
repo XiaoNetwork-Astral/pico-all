@@ -1,0 +1,248 @@
+/*
+ * This file is part of the Pico OpenPGP distribution (https://github.com/polhenarejos/pico-openpgp).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#ifdef ESP_PLATFORM
+#include "compat/esp_compat.h"
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#endif
+#include "openpgp.h"
+#include "do.h"
+#include "random.h"
+#include "mbedtls/ecdh.h"
+#include "mbedtls/asn1.h"
+
+static bool forcesig_enabled(void) {
+    file_t *pw_status = file_search_by_fid(EF_PW_PRIV, NULL, SPECIFY_EF);
+    return pw_status && file_has_data(pw_status) && file_get_size(pw_status) > 0 && file_get_data(pw_status)[0] == 0;
+}
+
+int cmd_pso(void) {
+    uint16_t algo_fid = 0x0, pk_fid = 0x0;
+    uint16_t uif_fid = 0x0;
+    bool is_aes = false;
+    if (P1(apdu) == 0x9E && P2(apdu) == 0x9A) {
+        if (!has_pw1 && (forcesig_enabled() || !has_pw3)) {
+            return SW_SECURITY_STATUS_NOT_SATISFIED();
+        }
+        algo_fid = EF_ALGO_PRIV1;
+        pk_fid = EF_PK_SIG;
+        uif_fid = EF_UIF_SIG;
+    }
+    else if (P1(apdu) == 0x80 && P2(apdu) == 0x86) {
+        if (!has_pw3 && !has_pw2) {
+            return SW_SECURITY_STATUS_NOT_SATISFIED();
+        }
+        algo_fid = algo_dec;
+        pk_fid = pk_dec;
+        uif_fid = pk_dec == EF_PK_AUT ? EF_UIF_AUT : EF_UIF_DEC;
+    }
+    else if (P1(apdu) == 0x86 && P2(apdu) == 0x80) {
+        if (!has_pw3 && !has_pw2) {
+            return SW_SECURITY_STATUS_NOT_SATISFIED();
+        }
+        algo_fid = algo_dec;
+        pk_fid = pk_dec;
+        uif_fid = pk_dec == EF_PK_AUT ? EF_UIF_AUT : EF_UIF_DEC;
+    }
+    else {
+        return SW_INCORRECT_P1P2();
+    }
+    file_t *algo_ef = file_search_by_fid(algo_fid, NULL, SPECIFY_EF);
+    if (!algo_ef) {
+        return SW_REFERENCE_NOT_FOUND();
+    }
+    const uint8_t *algo = algorithm_attr_rsa2k + 1;
+    if (algo_ef && algo_ef->data) {
+        algo = file_get_data(algo_ef);
+        uint16_t algo_len = file_get_size(algo_ef);
+        if (algo_len == 0 || algo_len > OPENPGP_MAX_ALGORITHM_ATTR_SIZE) {
+            return SW_WRONG_DATA();
+        }
+    }
+    bool aes_decipher = apdu.nc > 0 && P1(apdu) == 0x80 && P2(apdu) == 0x86 &&
+                        apdu.data[0] == 0x02 && (apdu.nc - 1) % 16 == 0;
+    bool aes_encipher = apdu.nc > 0 && P1(apdu) == 0x86 && P2(apdu) == 0x80 &&
+                        apdu.nc % 16 == 0;
+    if (aes_decipher || aes_encipher) {
+        pk_fid = EF_AES_KEY;
+        is_aes = true;
+    }
+    else if (P1(apdu) == 0x86 && P2(apdu) == 0x80) {
+        return SW_WRONG_LENGTH();
+    }
+    file_t *ef = file_search_by_fid(pk_fid, NULL, SPECIFY_EF);
+    if (!ef) {
+        return SW_REFERENCE_NOT_FOUND();
+    }
+    if (wait_button_pressed_fid(uif_fid) == true) {
+        return SW_SECURE_MESSAGE_EXEC_ERROR();
+    }
+    int r = PICOKEYS_OK;
+    size_t key_size = 0;
+    if (is_aes) {
+        uint8_t aes_key[32];
+        r = load_aes_key(aes_key, &key_size, ef);
+        if (r != PICOKEYS_OK) {
+            memset(aes_key, 0, sizeof(aes_key));
+            return SW_EXEC_ERROR();
+        }
+        const uint16_t aes_key_bits = (uint16_t)(key_size * 8);
+        if (P1(apdu) == 0x80 && P2(apdu) == 0x86) { //decipher
+            r = aes_decrypt(CONST_BYTE_ARRAY(aes_key, aes_key_bits / 8), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(apdu.data + 1, apdu.nc - 1));
+            memset(aes_key, 0, sizeof(aes_key));
+            if (r != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+            memcpy(res_APDU, apdu.data + 1, apdu.nc - 1);
+            res_APDU_size = apdu.nc - 1;
+        }
+        else if (P1(apdu) == 0x86 && P2(apdu) == 0x80) { //encipher
+            r = aes_encrypt(CONST_BYTE_ARRAY(aes_key, aes_key_bits / 8), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(apdu.data, apdu.nc));
+            memset(aes_key, 0, sizeof(aes_key));
+            if (r != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+            res_APDU[0] = 0x2;
+            memcpy(res_APDU + 1, apdu.data, apdu.nc);
+            res_APDU_size = apdu.nc + 1;
+        }
+        signal_private_key_use(uif_fid);
+        return SW_OK();
+    }
+    if (algo[0] == ALGO_RSA) {
+        mbedtls_rsa_context ctx;
+        mbedtls_rsa_init(&ctx);
+        r = load_private_key_rsa(&ctx, ef, true);
+        if (r != PICOKEYS_OK) {
+            mbedtls_rsa_free(&ctx);
+            return SW_EXEC_ERROR();
+        }
+        key_size = mbedtls_rsa_get_len(&ctx);
+        if (P1(apdu) == 0x9E && P2(apdu) == 0x9A) {
+            size_t olen = 0;
+            r = rsa_sign(&ctx, apdu.data, apdu.nc, res_APDU, &olen);
+            mbedtls_rsa_free(&ctx);
+            if (r != 0) {
+                return SW_EXEC_ERROR();
+            }
+            res_APDU_size = olen;
+            //apdu.ne = key_size;
+            inc_sig_count();
+        }
+        else if (P1(apdu) == 0x80 && P2(apdu) == 0x86) {
+            if (apdu.nc < key_size) { //needs padding
+                memset(apdu.data + apdu.nc, 0, key_size - apdu.nc);
+            }
+            size_t olen = 0;
+            r = mbedtls_rsa_pkcs1_decrypt(&ctx, random_fill_iterator, NULL, &olen, apdu.data + 1, res_APDU, key_size);
+            mbedtls_rsa_free(&ctx);
+            if (r != 0) {
+                return SW_EXEC_ERROR();
+            }
+            res_APDU_size = olen;
+        }
+    }
+    else if (algo[0] == ALGO_ECDH || algo[0] == ALGO_ECDSA || algo[0] == ALGO_EDDSA) {
+        if (P1(apdu) == 0x9E && P2(apdu) == 0x9A) {
+            mbedtls_ecp_keypair ctx;
+            mbedtls_ecp_keypair_init(&ctx);
+            r = load_private_key_ecdsa(&ctx, ef, true);
+            if (r != PICOKEYS_OK) {
+                mbedtls_ecp_keypair_free(&ctx);
+                return SW_EXEC_ERROR();
+            }
+            size_t olen = 0;
+            r = ecdsa_sign(&ctx, apdu.data, apdu.nc, res_APDU, &olen);
+            mbedtls_ecp_keypair_free(&ctx);
+            if (r != 0) {
+                return SW_EXEC_ERROR();
+            }
+            res_APDU_size = olen;
+            inc_sig_count();
+        }
+        else if (P1(apdu) == 0x80 && P2(apdu) == 0x86) {
+            mbedtls_ecdh_context ctx;
+            uint8_t kdata[67];
+            uint8_t *data = apdu.data, *end = data + apdu.nc;
+            size_t len = 0;
+            if (mbedtls_asn1_get_tag(&data, end, &len, 0xA6) != 0) {
+                return SW_WRONG_DATA();
+            }
+            if (*data++ != 0x7f) {
+                return SW_WRONG_DATA();
+            }
+            if (mbedtls_asn1_get_tag(&data, end, &len,
+                                     0x49) != 0 ||
+                mbedtls_asn1_get_tag(&data, end, &len, 0x86) != 0) {
+                return SW_WRONG_DATA();
+            }
+            //if (len != 2*key_size-1)
+            //    return SW_WRONG_LENGTH();
+            byte_buffer_t key = BYTE_BUFFER(kdata, sizeof(kdata));
+            if (load_key_data(ef, &key, true) != PICOKEYS_OK || key.len < 2) {
+                mbedtls_platform_zeroize(kdata, sizeof(kdata));
+                return SW_EXEC_ERROR();
+            }
+            key_size = key.len;
+            mbedtls_ecdh_init(&ctx);
+            mbedtls_ecp_group_id gid = kdata[0];
+            r = mbedtls_ecdh_setup(&ctx, gid);
+            if (r != 0) {
+                mbedtls_platform_zeroize(kdata, sizeof(kdata));
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            r = mbedtls_ecp_read_key(gid, (mbedtls_ecdsa_context *)&ctx.ctx.mbed_ecdh, kdata + 1, key_size - 1);
+            mbedtls_platform_zeroize(kdata, sizeof(kdata));
+            if (r != 0) {
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            if (mbedtls_ecp_get_type(&ctx.ctx.mbed_ecdh.grp) == MBEDTLS_ECP_TYPE_MONTGOMERY) {
+                size_t montgomery_len = mbedtls_mpi_size(&ctx.ctx.mbed_ecdh.grp.P);
+                const uint8_t *peer = data;
+                if (len == montgomery_len + 1 && data[0] == 0x40) {
+                    peer = data + 1;
+                    len--;
+                }
+                if (len != montgomery_len) {
+                    mbedtls_ecdh_free(&ctx);
+                    return SW_WRONG_LENGTH();
+                }
+                r = mbedtls_ecp_point_read_binary(&ctx.ctx.mbed_ecdh.grp, &ctx.ctx.mbed_ecdh.Qp,
+                                                  peer, len);
+            }
+            else {
+                r = mbedtls_ecdh_read_public(&ctx, data - 1, len + 1);
+            }
+            if (r != 0) {
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            size_t olen = 0;
+            r = mbedtls_ecdh_calc_secret(&ctx, &olen, res_APDU, MBEDTLS_ECP_MAX_BYTES, random_fill_iterator, NULL);
+            if (r != 0) {
+                mbedtls_ecdh_free(&ctx);
+                return SW_EXEC_ERROR();
+            }
+            res_APDU_size = olen;
+            mbedtls_ecdh_free(&ctx);
+        }
+    }
+    signal_private_key_use(uif_fid);
+    return SW_OK();
+}

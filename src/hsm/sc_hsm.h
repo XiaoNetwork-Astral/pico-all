@@ -1,0 +1,171 @@
+/*
+ * This file is part of the Pico HSM distribution (https://github.com/polhenarejos/pico-hsm).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#ifndef _SC_HSM_H_
+#define _SC_HSM_H_
+
+#include <stdlib.h>
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#include "mbedtls/rsa.h"
+#include "mbedtls/ecdsa.h"
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#include "pico/stdlib.h"
+#endif
+#include "file.h"
+#include "apdu.h"
+#include "picokeys.h"
+#include "object_policy.h"
+#include "usb.h"
+
+#define MAX_APDU_DATA (USB_BUFFER_SIZE - 20)
+
+extern const uint8_t sc_hsm_aid[];
+
+#define ALGO_RSA_RAW            0x20        /* RSA signature with external padding */
+#define ALGO_RSA_DECRYPT        0x21        /* RSA raw decrypt */
+#define ALGO_RSA_DECRYPT_PKCS1  0x22
+#define ALGO_RSA_DECRYPT_OEP    0x23
+#define ALGO_RSA_PKCS1          0x30        /* RSA signature with DigestInfo input and PKCS#1 V1.5 padding */
+#define ALGO_RSA_PKCS1_SHA1     0x31        /* RSA signature with SHA-1 hash and PKCS#1 V1.5 padding */
+#define ALGO_RSA_PKCS1_SHA224   0x32
+#define ALGO_RSA_PKCS1_SHA256   0x33        /* RSA signature with SHA-256 hash and PKCS#1 V1.5 padding */
+#define ALGO_RSA_PKCS1_SHA384   0x34
+#define ALGO_RSA_PKCS1_SHA512   0x35
+
+#define ALGO_RSA_PSS            0x40        /* RSA signature with external hash and PKCS#1 PSS padding*/
+#define ALGO_RSA_PSS_SHA1       0x41        /* RSA signature with SHA-1 hash and PKCS#1 PSS padding */
+#define ALGO_RSA_PSS_SHA224     0x42
+#define ALGO_RSA_PSS_SHA256     0x43        /* RSA signature with SHA-256 hash and PKCS#1 PSS padding */
+#define ALGO_RSA_PSS_SHA384     0x44
+#define ALGO_RSA_PSS_SHA512     0x45
+
+#define ALGO_EC_RAW             0x70        /* ECDSA signature with hash input */
+#define ALGO_EC_SHA1            0x71        /* ECDSA signature with SHA-1 hash */
+#define ALGO_EC_SHA224          0x72        /* ECDSA signature with SHA-224 hash */
+#define ALGO_EC_SHA256          0x73        /* ECDSA signature with SHA-256 hash */
+#define ALGO_EC_SHA384          0x74
+#define ALGO_EC_SHA512          0x75
+#define ALGO_EC_DH              0x80        /* ECDH key derivation */
+#define ALGO_EC_DH_AUTPUK       0x83
+#define ALGO_EC_DH_XKEK         0x84
+#define ALGO_HD                 0xA0
+
+#define ALGO_WRAP               0x92
+#define ALGO_UNWRAP             0x93
+#define ALGO_REPLACE            0x94
+
+#define ALGO_EC_DERIVE          0x98        /* Derive EC key from EC key */
+
+#define ALGO_AES_CBC_ENCRYPT    0x10
+#define ALGO_AES_CBC_DECRYPT    0x11
+#define ALGO_AES_CMAC           0x18
+#define ALGO_EXT_CIPHER_ENCRYPT 0x51        /* Extended ciphering Encrypt */
+#define ALGO_EXT_CIPHER_DECRYPT 0x52        /* Extended ciphering Decrypt */
+#define ALGO_AES_DERIVE         0x99
+
+#define HSM_OPT_RRC                 0x0001
+#define HSM_OPT_TRANSPORT_PIN       0x0002
+#define HSM_OPT_REPLACE_PKA         0x0008
+#define HSM_OPT_COMBINED_AUTH       0x0010
+#define HSM_OPT_RRC_RESET_ONLY      0x0020
+#define HSM_OPT_BOOTSEL_BUTTON      0x0100
+#define HSM_OPT_KEY_COUNTER_ALL     0x0200
+#define HSM_OPT_SECURE_LOCK         0x0400
+
+#define PRKD_PREFIX             0xC4        /* Hi byte in file identifier for PKCS#15 PRKD objects */
+#define CD_PREFIX               0xC8        /* Hi byte in file identifier for PKCS#15 CD objects */
+#define DCOD_PREFIX             0xC9        /* Hi byte in file identifier for PKCS#15 DCOD objects */
+#define CA_CERTIFICATE_PREFIX   0xCA        /* Hi byte in file identifier for CA certificates */
+#define HSM_OBJECT_PREFIX       0xC7        /* Physical v1 HSM object records */
+#define KEY_PREFIX              0xCC        /* Hi byte in file identifier for key objects */
+#define PROT_DATA_PREFIX        0xCD        /* Hi byte in file identifier for PIN protected data objects */
+#define EE_CERTIFICATE_PREFIX   0xCE        /* Hi byte in file identifier for EE certificates */
+#define DATA_PREFIX             0xCF        /* Hi byte in file identifier for readable data objects */
+
+#define HSM_OBJECT_NAMESPACE    0x0001
+#define HSM_OBJECT_KEY_MATERIAL 0x0001
+
+#define P15_KEYTYPE_RSA     0x30
+#define P15_KEYTYPE_ECC     0xA0
+#define P15_KEYTYPE_AES     0xA8
+
+#define MAX_PUK 8
+
+extern int hsm_pin_reset_retries(const file_t *pin, bool);
+extern int pin_wrong_retry(const file_t *pin);
+extern void hsm_select_file(file_t *pe);
+
+extern int add_cert_puk_store(const_byte_array_t data, bool copy);
+extern int parse_token_info(const file_t *f, int mode);
+extern int parse_ef_dir(const file_t *f, int mode);
+extern void hsm_scan_all(void);
+extern void reset_puk_store(void);
+extern uint16_t get_device_options(void);
+extern bool has_session_pin, has_session_sopin;
+extern uint8_t hsm_session_pin[32], session_sopin[32];
+extern uint16_t hsm_check_pin(const file_t *pin, const_byte_array_t data);
+extern bool pka_enabled(void);
+extern void hsm_update_user_auth(void);
+extern const uint8_t *dev_name;
+extern uint16_t dev_name_len;
+extern uint8_t puk_status[MAX_PUK];
+extern int puk_store_select_chr(const uint8_t *chr);
+extern const_byte_array_t get_meta_tag(file_t *ef, uint16_t meta_tag);
+extern void hsm_key_append_fci_metadata(uint8_t key_id);
+extern bool key_has_purpose(file_t *ef, uint8_t purpose);
+extern int hsm_load_private_key_rsa(mbedtls_rsa_context *ctx, file_t *fkey, uint16_t operation, bool internal_firmware);
+extern int load_private_key_ec(mbedtls_ecp_keypair *ctx, file_t *fkey, uint16_t operation, bool internal_firmware);
+extern int load_private_key_ecdh(mbedtls_ecp_keypair *ctx, file_t *fkey, uint16_t operation, bool internal_firmware);
+extern bool hsm_wait_button_pressed(void);
+extern int hsm_store_keys(void *key_ctx, int type, uint8_t key_id);
+extern int find_and_store_meta_key(uint8_t key_id);
+extern file_t *hsm_key_search(uint8_t key_id);
+extern file_t *hsm_key_open_or_create(uint8_t key_id);
+extern uint16_t hsm_key_logical_fid(const file_t *file);
+extern uint32_t get_key_counter(file_t *fkey);
+extern uint32_t decrement_key_counter(file_t *fkey);
+extern int hsm_cmd_select(void);
+extern int cmd_list_keys(void);
+extern int cmd_read_binary(void);
+extern int hsm_cmd_verify(void);
+extern int hsm_cmd_reset_retry(void);
+extern int hsm_cmd_challenge(void);
+extern bool pka_challenge_pending(void);
+extern void clear_pka_challenge(void);
+extern int cmd_external_authenticate(void);
+extern int hsm_cmd_mse(void);
+extern int cmd_initialize(void);
+extern int cmd_key_domain(void);
+extern int cmd_key_wrap(void);
+extern int hsm_cmd_keypair_gen(void);
+extern int cmd_update_ef(void);
+extern int cmd_delete_file(void);
+extern int hsm_cmd_change_pin(void);
+extern int cmd_key_gen(void);
+extern int cmd_signature(void);
+extern int cmd_key_unwrap(void);
+extern int cmd_decrypt_asym(void);
+extern int cmd_cipher_sym(void);
+extern int cmd_derive_asym(void);
+extern int cmd_extras(void);
+extern int cmd_general_authenticate(void);
+extern int cmd_puk_auth(void);
+extern int hsm_cmd_pso(void);
+extern int cmd_bip_slip(void);
+extern uint8_t get_key_domain(file_t *fkey);
+
+#endif

@@ -1,0 +1,96 @@
+/*
+ * This file is part of the Pico HSM distribution (https://github.com/polhenarejos/pico-hsm).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "crypto_utils.h"
+#include "sc_hsm.h"
+#include "random.h"
+#include "key_container.h"
+
+static void rollback_generated_key(uint8_t key_id) {
+    file_t *fkey = hsm_key_search(key_id);
+    file_t *fprkd = file_search((PRKD_PREFIX << 8) | key_id);
+    bool changed = false;
+
+    if (fkey && (fkey->fid >> 8) == HSM_OBJECT_PREFIX && meta_delete_no_commit((KEY_PREFIX << 8) | key_id) == PICOKEYS_OK) {
+        changed = true;
+    }
+    if (fkey) {
+        if (hsm_key_container_is_marker(fkey)) {
+            if (hsm_key_container_delete(key_id) == PICOKEYS_OK) {
+                changed = false;
+            }
+        }
+        else if (file_delete_no_commit(fkey) == PICOKEYS_OK) {
+            changed = true;
+        }
+    }
+    if (fprkd && file_delete_no_commit(fprkd) == PICOKEYS_OK) {
+        changed = true;
+    }
+    if (changed) {
+        flash_commit();
+    }
+}
+
+int cmd_key_gen(void) {
+    uint8_t key_id = P1(apdu);
+    uint8_t p2 = P2(apdu);
+    uint8_t key_size = 32;
+    int r;
+    if (!isUserAuthenticated) {
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
+    }
+    if (p2 == 0xB3) {
+        key_size = 64;
+    }
+    else if (p2 == 0xB2) {
+        key_size = 32;
+    }
+    else if (p2 == 0xB1) {
+        key_size = 24;
+    }
+    else if (p2 == 0xB0) {
+        key_size = 16;
+    }
+    //at this moment, we do not use the template, as only CBC is supported by the driver (encrypt, decrypt and CMAC)
+    uint8_t aes_key[64]; //maximum AES key size
+    memcpy(aes_key, random_bytes_get(key_size), key_size);
+    int aes_type = 0x0;
+    if (key_size == 16) {
+        aes_type = PICOKEYS_KEY_AES_128;
+    }
+    else if (key_size == 24) {
+        aes_type = PICOKEYS_KEY_AES_192;
+    }
+    else if (key_size == 32) {
+        aes_type = PICOKEYS_KEY_AES_256;
+    }
+    else if (key_size == 64) {
+        aes_type = PICOKEYS_KEY_AES_512;
+    }
+    r = hsm_store_keys(aes_key, aes_type, key_id);
+    if (r != PICOKEYS_OK) {
+        rollback_generated_key(key_id);
+        return SW_MEMORY_FAILURE();
+    }
+    if (find_and_store_meta_key(key_id) != PICOKEYS_OK) {
+        rollback_generated_key(key_id);
+        return SW_EXEC_ERROR();
+    }
+    flash_commit();
+    return SW_OK();
+}

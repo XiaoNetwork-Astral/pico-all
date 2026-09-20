@@ -1,0 +1,276 @@
+/*
+ * This file is part of the Pico HSM distribution (https://github.com/polhenarejos/pico-hsm).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "sc_hsm.h"
+#include "crypto_utils.h"
+#include "files.h"
+#include "random.h"
+#include "kek.h"
+#include "version.h"
+#include "tlv.h"
+#include "cvc.h"
+#include "otp.h"
+#include "object_authorization.h"
+
+extern char __StackLimit;
+static int heapLeft(void) {
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+    char *p = malloc(256);   // try to avoid undue fragmentation
+    int left = &__StackLimit - p;
+    free(p);
+#else
+    int left = 1024 * 1024;
+#endif
+    return left;
+}
+
+int cmd_initialize(void) {
+    if (apdu.nc > 0) {
+        uint8_t mkek[MKEK_SIZE];
+        uint16_t opts = get_device_options();
+        if (opts & HSM_OPT_SECURE_LOCK && !has_mkek_mask) {
+            return SW_SECURITY_STATUS_NOT_SATISFIED();
+        }
+        int ret_mkek = load_mkek(mkek); //Try loading MKEK with previous session
+        file_initialize_flash(true);
+        hsm_scan_all();
+        hsm_object_authorization_session_invalidate();
+        has_session_pin = has_session_sopin = has_mkek_mask = false;
+        uint8_t *p = NULL, *kds = NULL, *dkeks = NULL;
+        tlv_item_t item;
+        tlv_ctx_t ctxi;
+        tlv_ctx_init(BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc), &ctxi);
+        while (tlv_walk(&ctxi, &p, &item)) {
+            uint16_t tag = item.tag;
+            uint16_t tag_len = (uint16_t)item.value.len;
+            uint8_t *tag_data = (uint8_t *)item.value.data;
+            if (tag == 0x80) { //options
+                file_t *tf = file_search(EF_DEVOPS);
+                file_put_data(tf, CONST_BYTE_ARRAY(tag_data, tag_len));
+            }
+            else if (tag == 0x81) {   //user pin
+                if (file_pin1 && file_pin1->data) {
+                    uint8_t pin_data[34];
+                    pin_data[0] = (uint8_t)tag_len;
+                    pin_data[1] = 1; // Format
+                    pin_derive_verifier(CONST_BYTE_ARRAY(tag_data, tag_len), pin_data + 2);
+                    file_put_data(file_pin1, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
+                    pin_derive_session(CONST_BYTE_ARRAY(tag_data, tag_len), hsm_session_pin);
+                    has_session_pin = true;
+                }
+            }
+            else if (tag == 0x82) {   //sopin pin
+                if (file_sopin && file_sopin->data) {
+                    uint8_t pin_data[34];
+                    pin_data[0] = (uint8_t)tag_len;
+                    pin_data[1] = 1; // Format
+                    pin_derive_verifier(CONST_BYTE_ARRAY(tag_data, tag_len), pin_data + 2);
+                    file_put_data(file_sopin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
+                    pin_derive_session(CONST_BYTE_ARRAY(tag_data, tag_len), session_sopin);
+                    has_session_sopin = true;
+                }
+            }
+            else if (tag == 0x91) {   //retries user pin
+                file_t *tf = file_search(EF_PIN1_MAX_RETRIES);
+                if (tf && tf->data) {
+                    file_put_data(tf, CONST_BYTE_ARRAY(tag_data, tag_len));
+                }
+                if (file_retries_pin1 && file_retries_pin1->data) {
+                    file_put_data(file_retries_pin1, CONST_BYTE_ARRAY(tag_data, tag_len));
+                }
+            }
+            else if (tag == 0x92) {
+                dkeks = tag_data;
+                file_t *tf = file_new(EF_DKEK);
+                if (!tf) {
+                    release_mkek(mkek);
+                    return SW_MEMORY_FAILURE();
+                }
+                file_put_data(tf, CONST_BYTE_ARRAY(NULL, 0));
+            }
+            else if (tag == 0x93) {
+                file_t *ef_puk = file_search(EF_PUKAUT);
+                if (!ef_puk) {
+                    release_mkek(mkek);
+                    return SW_MEMORY_FAILURE();
+                }
+                uint8_t pk_status[4], puks = MIN(tag_data[0], MAX_PUK);
+                memset(pk_status, 0, sizeof(pk_status));
+                pk_status[0] = puks;
+                pk_status[1] = puks;
+                pk_status[2] = tag_data[1];
+                file_put_data(ef_puk, CONST_BYTE_ARRAY(pk_status, sizeof(pk_status)));
+                for (uint8_t i = 0; i < puks; i++) {
+                    file_t *tf = file_new(EF_PUK + i);
+                    if (!tf) {
+                        release_mkek(mkek);
+                        return SW_MEMORY_FAILURE();
+                    }
+                    file_put_data(tf, CONST_BYTE_ARRAY(NULL, 0));
+                }
+            }
+            else if (tag == 0x97) {
+                kds = tag_data;
+                /*
+                   for (int i = 0; i < MIN(*kds,MAX_KEY_DOMAINS); i++) {
+                    file_t *tf = file_new(EF_DKEK+i);
+                    if (!tf)
+                        return SW_MEMORY_FAILURE();
+                    file_put_data(tf, CONST_BYTE_ARRAY(NULL, 0));
+                   }
+                 */
+            }
+        }
+        file_t *tf_kd = file_search(EF_KEY_DOMAIN);
+        if (!tf_kd) {
+            release_mkek(mkek);
+            return SW_EXEC_ERROR();
+        }
+        if (ret_mkek != PICOKEYS_OK) {
+            ret_mkek = load_mkek(mkek); //Try again with new PIN/SO-PIN just in case some is the same
+        }
+        if (store_mkek(ret_mkek == PICOKEYS_OK ? mkek : NULL) != PICOKEYS_OK) {
+            release_mkek(mkek);
+            return SW_EXEC_ERROR();
+        }
+        release_mkek(mkek);
+        if (dkeks) {
+            if (*dkeks > 0) {
+                uint16_t d = *dkeks;
+                if (file_put_data(tf_kd, CONST_BYTE_ARRAY((const uint8_t *)&d, sizeof(d))) != PICOKEYS_OK) {
+                    return SW_EXEC_ERROR();
+                }
+            }
+            else {
+                int r = save_dkek_key(0, random_bytes_get(32));
+                if (r != PICOKEYS_OK) {
+                    return SW_EXEC_ERROR();
+                }
+                uint16_t d = 0x0101;
+                if (file_put_data(tf_kd, CONST_BYTE_ARRAY((const uint8_t *)&d, sizeof(d))) != PICOKEYS_OK) {
+                    return SW_EXEC_ERROR();
+                }
+            }
+        }
+        else {
+            uint16_t d = 0x0000;
+            if (file_put_data(tf_kd, CONST_BYTE_ARRAY((const uint8_t *)&d, sizeof(d))) != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+        }
+        if (kds) {
+            uint8_t t[MAX_KEY_DOMAINS * 2], k = MIN(*kds, MAX_KEY_DOMAINS);
+            memset(t, 0xff, 2 * k);
+            if (file_put_data(tf_kd, CONST_BYTE_ARRAY(t, 2 * k)) != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+        }
+        /* When initialized, it has all credentials */
+        isUserAuthenticated = true;
+        /* Create terminal private key */
+        file_t *fdkey = hsm_key_search(0);
+        if (!fdkey) {
+            return SW_EXEC_ERROR();
+        }
+        int ret = 0;
+        bool recreate_dev_key = ret_mkek != PICOKEYS_OK || !file_has_data(fdkey) || !file_has_data(file_search(EF_TERMCA));
+        if (!recreate_dev_key) {
+            mbedtls_ecp_keypair existing_key;
+            mbedtls_ecp_keypair_init(&existing_key);
+            recreate_dev_key = load_private_key_ec(&existing_key, fdkey, FILE_OBJECT_OPERATION_USE, true) != PICOKEYS_OK;
+            mbedtls_ecp_keypair_free(&existing_key);
+        }
+        if (recreate_dev_key) {
+            mbedtls_ecdsa_context ecdsa;
+            mbedtls_ecdsa_init(&ecdsa);
+            mbedtls_ecp_group_id ec_id = MBEDTLS_ECP_DP_SECP256R1;
+            uint8_t key_id = 0;
+            if (otp_key_2) {
+                ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256K1, &ecdsa, otp_key_2, 32);
+                if (ret != 0) {
+                    mbedtls_ecdsa_free(&ecdsa);
+                    return SW_EXEC_ERROR();
+                }
+                ret = mbedtls_ecp_keypair_calc_public(&ecdsa, random_fill_iterator, NULL);
+                if (ret != 0) {
+                    mbedtls_ecdsa_free(&ecdsa);
+                    return SW_EXEC_ERROR();
+                }
+            }
+            else {
+                ret = mbedtls_ecdsa_genkey(&ecdsa, ec_id, random_fill_iterator, NULL);
+            }
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return SW_EXEC_ERROR();
+            }
+            ret = hsm_store_keys(&ecdsa, PICOKEYS_KEY_EC, key_id);
+            if (ret != PICOKEYS_OK) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return SW_EXEC_ERROR();
+            }
+            uint16_t ee_len = 0;
+            mbedtls_pk_context subject_pk;
+            byte_buffer_t certificates = BYTE_BUFFER(res_APDU, MAX_APDU_DATA);
+            if (cvc_pk_wrap_ec(&subject_pk, &ecdsa) != LIBCVC_OK || asn1_cvc_aut(&subject_pk, &certificates, CONST_BYTE_ARRAY(NULL, 0)) == 0) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return SW_EXEC_ERROR();
+            }
+            ee_len = (uint16_t)certificates.len;
+
+            file_t *fpk = file_search(EF_EE_DEV);
+            ret = file_put_data(fpk, CONST_BYTE_ARRAY(res_APDU, ee_len));
+            if (ret != PICOKEYS_OK) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return SW_EXEC_ERROR();
+            }
+
+            certificates.len = 0; // Reset output buffer
+            if (asn1_cvc_cert(&subject_pk, &certificates, CONST_BYTE_ARRAY(NULL, 0), true) == 0) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return SW_EXEC_ERROR();
+            }
+            mbedtls_ecdsa_free(&ecdsa);
+            fpk = file_search(EF_TERMCA);
+            ret = file_put_data(fpk, CONST_BYTE_ARRAY(res_APDU, certificates.len));
+            if (ret != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+
+            const uint8_t *keyid = (const uint8_t *) "\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0",
+                          *label = (const uint8_t *) "ESPICOHSMTR";
+            byte_buffer_t prkd = BYTE_BUFFER(res_APDU, MAX_APDU_DATA);
+            asn1_build_prkd_ecc(CONST_BYTE_ARRAY(label, (uint16_t)strlen((const char *)label)), CONST_BYTE_ARRAY(keyid, 20), 256, &prkd);
+            fpk = file_search(EF_PRKD_DEV);
+            ret = file_put_data(fpk, CONST_BYTE_ARRAY(res_APDU, prkd.len));
+        }
+        if (ret != PICOKEYS_OK) {
+            return SW_EXEC_ERROR();
+        }
+        flash_commit();
+        reset_puk_store();
+    }
+    else {   //free memory bytes request
+        int heap_left = heapLeft();
+        res_APDU_size += put_uint32_be(heap_left, res_APDU);
+        res_APDU[4] = 0;
+        res_APDU[5] = HSM_VERSION_MAJOR;
+        res_APDU[6] = HSM_VERSION_MINOR;
+        res_APDU_size = 7;
+    }
+    return SW_OK();
+}

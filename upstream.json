@@ -1,0 +1,18 @@
+{
+  "pico-fido": {
+    "url": "https://github.com/polhenarejos/pico-fido",
+    "commit": "680dfbd3a3b8d3dca603cea6f8233759b4540fab"
+  },
+  "pico-openpgp": {
+    "url": "https://github.com/polhenarejos/pico-openpgp",
+    "commit": "50d024dc535ad8d21bf8561e1b12d7e52a64f47f"
+  },
+  "pico-hsm": {
+    "url": "https://github.com/polhenarejos/pico-hsm",
+    "commit": "7d9945770be071e60f62ec1c3db6fa80355b15d5"
+  },
+  "pico-keys-sdk": {
+    "url": "https://github.com/polhenarejos/pico-keys-sdk",
+    "commit": "ebdbb28f42f7d42e6db55376e4bd84eda4c6155c"
+  }
+}

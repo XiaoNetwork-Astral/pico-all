@@ -1,0 +1,123 @@
+/*
+ * This file is part of the Pico HSM distribution (https://github.com/polhenarejos/pico-hsm).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "sc_hsm.h"
+#include "mbedtls/ecdh.h"
+#include "tlv.h"
+#include "random.h"
+#include "oid.h"
+#include "eac.h"
+#include "files.h"
+#include "otp.h"
+
+int cmd_general_authenticate(void) {
+    if (P1(apdu) == 0x0 && P2(apdu) == 0x0) {
+        if (apdu.nc < 2) {
+            return SW_WRONG_LENGTH();
+        }
+        if (apdu.data[0] == 0x7C) {
+            if (apdu.data[1] != apdu.nc - 2) {
+                return SW_WRONG_DATA();
+            }
+            int r = 0;
+            uint16_t pubkey_len = 0;
+            const uint8_t *pubkey = NULL;
+            uint8_t *p = NULL;
+            tlv_item_t item;
+            tlv_ctx_t ctxi;
+            tlv_ctx_init(BYTE_ARRAY(apdu.data + 2, (uint16_t)(apdu.nc - 2)), &ctxi);
+            while (tlv_walk(&ctxi, &p, &item)) {
+                if (item.tag == 0x80) {
+                    pubkey = item.value.data - 1; //mbedtls ecdh starts reading one pos before
+                    pubkey_len = item.value.len + 1;
+                }
+            }
+            if (!pubkey) {
+                return SW_WRONG_DATA();
+            }
+            file_t *fkey = hsm_key_search(0);
+            if (!fkey) {
+                return SW_EXEC_ERROR();
+            }
+            mbedtls_ecp_keypair ectx;
+            mbedtls_ecp_keypair_init(&ectx);
+            r = load_private_key_ecdh(&ectx, fkey, FILE_OBJECT_OPERATION_DERIVE, true);
+            if (r != PICOKEYS_OK) {
+                mbedtls_ecp_keypair_free(&ectx);
+                return SW_EXEC_ERROR();
+            }
+            mbedtls_ecdh_context ctx;
+            mbedtls_ecdh_init(&ctx);
+            mbedtls_ecp_group_id gid = MBEDTLS_ECP_DP_SECP256R1;
+            if (otp_key_2) {
+                gid = MBEDTLS_ECP_DP_SECP256K1;
+            }
+            r = mbedtls_ecdh_setup(&ctx, gid);
+            if (r != 0) {
+                mbedtls_ecp_keypair_free(&ectx);
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            r = mbedtls_mpi_copy(&ctx.ctx.mbed_ecdh.d, &ectx.d);
+            mbedtls_ecp_keypair_free(&ectx);
+            if (r != 0) {
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            r = mbedtls_ecdh_read_public(&ctx, pubkey, pubkey_len);
+            if (r != 0) {
+                mbedtls_ecdh_free(&ctx);
+                return SW_DATA_INVALID();
+            }
+            size_t olen = 0;
+            uint8_t derived[MBEDTLS_ECP_MAX_BYTES];
+            r = mbedtls_ecdh_calc_secret(&ctx, &olen, derived, MBEDTLS_ECP_MAX_BYTES, random_fill_iterator, NULL);
+            mbedtls_ecdh_free(&ctx);
+            if (r != 0) {
+                return SW_EXEC_ERROR();
+            }
+
+            sm_derive_all_keys(CONST_BYTE_ARRAY(derived, olen));
+
+            uint8_t *t = (uint8_t *) calloc(1, pubkey_len + 16);
+            memcpy(t, "\x7F\x49\x4F\x06\x0A", 5);
+            if (sm_get_protocol() == MSE_AES) {
+                memcpy(t + 5, OID_ID_CA_ECDH_AES_CBC_CMAC_128, 10);
+            }
+            t[15] = 0x86;
+            memcpy(t + 16, pubkey, pubkey_len);
+
+            res_APDU[res_APDU_size++] = 0x7C;
+            res_APDU[res_APDU_size++] = 20;
+            res_APDU[res_APDU_size++] = 0x81;
+            res_APDU[res_APDU_size++] = 8;
+            memcpy(res_APDU + res_APDU_size, sm_get_nonce(), 8);
+            res_APDU_size += 8;
+            res_APDU[res_APDU_size++] = 0x82;
+            res_APDU[res_APDU_size++] = 8;
+
+            r = sm_sign(CONST_BYTE_ARRAY(t, pubkey_len + 16), res_APDU + res_APDU_size);
+
+            free(t);
+            if (r != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+            res_APDU_size += 8;
+        }
+    }
+    return SW_OK();
+}

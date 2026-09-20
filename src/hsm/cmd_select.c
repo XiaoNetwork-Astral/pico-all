@@ -1,0 +1,176 @@
+/*
+ * This file is part of the Pico HSM distribution (https://github.com/polhenarejos/pico-hsm).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "sc_hsm.h"
+#include "files.h"
+#include "key_container.h"
+#include "version.h"
+
+extern const file_t *file_sc_hsm;
+
+static file_t logical_object_file;
+
+void hsm_select_file(file_t *pe) {
+    if (!pe) {
+        currentDF = (file_t *) MF;
+        currentEF = NULL;
+    }
+    else if (file_get_type(pe) & (FILE_TYPE_INTERNAL_EF|FILE_TYPE_WORKING_EF)) {
+        currentEF = pe;
+        currentDF = get_parent(pe);
+    }
+    else {
+        currentDF = pe;
+    }
+    if (currentEF == file_sc_hsm) {
+        selected_applet = currentEF;
+        //sc_hsm_unload(); //reset auth status
+    }
+}
+
+int hsm_cmd_select(void) {
+    uint8_t p1 = P1(apdu);
+    uint8_t p2 = P2(apdu);
+    file_t *pe = NULL;
+    uint16_t fid = 0x0;
+    bool logical_key = false;
+    bool logical_object = false;
+    uint32_t logical_object_size = 0;
+
+    // Only "first or only occurence" supported
+    //if ((p2 & 0xF3) != 0x00) {
+    //    return SW_INCORRECT_P1P2();
+    //}
+
+    if (apdu.nc == 2) {
+        fid = get_uint16_be(apdu.data);
+    }
+    if ((fid >> 8) == HSM_OBJECT_PREFIX || hsm_key_container_physical_fid(fid)) {
+        return SW_FILE_NOT_FOUND();
+    }
+
+    //if ((fid & 0xff00) == (KEY_PREFIX << 8))
+    //    fid = (PRKD_PREFIX << 8) | (fid & 0xff);
+
+    /*uint8_t pfx = fid >> 8;*/
+    /*if (pfx == PRKD_PREFIX ||
+        pfx == CD_PREFIX ||
+        pfx == CA_CERTIFICATE_PREFIX ||
+        pfx == KEY_PREFIX ||
+        pfx == EE_CERTIFICATE_PREFIX ||
+        pfx == DCOD_PREFIX ||
+        pfx == DATA_PREFIX ||
+        pfx == PROT_DATA_PREFIX) {*/
+    if (fid != 0x0) {
+        uint16_t object_type = 0;
+        file_t *marker = file_search((HSM_OBJECT_PREFIX << 8) | (fid & 0xff));
+        if (hsm_key_container_fid_object(fid, &object_type) && hsm_key_container_is_marker(marker)) {
+            if (hsm_key_container_object_size((uint8_t)fid, object_type, false, &logical_object_size) != PICOKEYS_OK) {
+                return SW_FILE_NOT_FOUND();
+            }
+            logical_object_file = (file_t) { .data = NULL, .fid = fid };
+            pe = &logical_object_file;
+            logical_object = true;
+        }
+        else {
+            pe = (fid >> 8) == KEY_PREFIX ? hsm_key_search(fid & 0xff) : file_search(fid);
+        }
+        if (!pe) {
+            return SW_FILE_NOT_FOUND();
+        }
+        logical_key = pe->fid != fid && (fid >> 8) == KEY_PREFIX;
+    }
+    /*}*/
+    if (!pe) {
+        if (p1 == 0x0) { //Select MF, DF or EF - File identifier or absent
+            if (apdu.nc == 0) {
+                pe = (file_t *) MF;
+                //ac_fini();
+            }
+            else if (apdu.nc == 2) {
+                if (!(pe = file_search_by_fid(fid, NULL, SPECIFY_ANY))) {
+                    return SW_FILE_NOT_FOUND();
+                }
+            }
+        }
+        else if (p1 == 0x01) {   //Select child DF - DF identifier
+            if (!(pe = file_search_by_fid(fid, currentDF, SPECIFY_DF))) {
+                return SW_FILE_NOT_FOUND();
+            }
+        }
+        else if (p1 == 0x02) {   //Select EF under the current DF - EF identifier
+            if (!(pe = file_search_by_fid(fid, currentDF, SPECIFY_EF))) {
+                return SW_FILE_NOT_FOUND();
+            }
+        }
+        else if (p1 == 0x03) {   //Select parent DF of the current DF - Absent
+            if (apdu.nc != 0) {
+                return SW_FILE_NOT_FOUND();
+            }
+        }
+        else if (p1 == 0x04) {   //Select by DF name - e.g., [truncated] application identifier
+            if (!(pe = file_search_by_name(CONST_BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc)))) {
+                return SW_FILE_NOT_FOUND();
+            }
+            if (card_terminated) {
+                return set_res_sw(0x62, 0x85);
+            }
+        }
+        else if (p1 == 0x08) {   //Select from the MF - Path without the MF identifier
+            if (!(pe = file_search_by_path(CONST_BYTE_ARRAY(apdu.data, (uint8_t)apdu.nc), MF))) {
+                return SW_FILE_NOT_FOUND();
+            }
+        }
+        else if (p1 == 0x09) {   //Select from the current DF - Path without the current DF identifier
+            if (!(pe = file_search_by_path(CONST_BYTE_ARRAY(apdu.data, (uint8_t)apdu.nc), currentDF))) {
+                return SW_FILE_NOT_FOUND();
+            }
+        }
+    }
+    if (pe && (pe->fid >> 8) == HSM_OBJECT_PREFIX && !logical_key) {
+        return SW_FILE_NOT_FOUND();
+    }
+    if ((p2 & 0xfc) == 0x00 || (p2 & 0xfc) == 0x04) {
+        if (logical_key) {
+            file_t logical_file = *pe;
+            logical_file.fid = fid;
+            file_process_fci(&logical_file, 0);
+            hsm_key_append_fci_metadata((uint8_t)fid);
+        }
+        else {
+            file_process_fci(pe, 0);
+            if (logical_object) {
+                put_uint16_be(logical_object_size > UINT16_MAX ? UINT16_MAX : (uint16_t)logical_object_size, res_APDU + 4);
+            }
+        }
+        if (pe == file_sc_hsm) {
+            res_APDU[res_APDU_size++] = 0x85;
+            res_APDU[res_APDU_size++] = 5;
+            uint16_t opts = get_device_options();
+            res_APDU_size += put_uint16_be(opts, res_APDU + res_APDU_size);
+            res_APDU[res_APDU_size++] = 0xFF;
+            res_APDU[res_APDU_size++] = HSM_VERSION_MAJOR;
+            res_APDU[res_APDU_size++] = HSM_VERSION_MINOR;
+            res_APDU[1] = (uint8_t)res_APDU_size - 2;
+        }
+    }
+    else {
+        return SW_INCORRECT_P1P2();
+    }
+    hsm_select_file(pe);
+    return SW_OK();
+}
