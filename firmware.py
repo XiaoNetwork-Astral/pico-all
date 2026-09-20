@@ -279,10 +279,11 @@ class BootOtp:
         self.tool, self.serial = tool, serial.upper()
 
     def read(self, row: int, ecc: bool = False) -> int:
-        text = run(self.tool, ["otp", "get", "-e" if ecc else "-r", "-c", "1", "-n",
-                              hex(row), *selection(self.serial)], "Reading security state...", 30)
+        text = run(self.tool, ["otp", "get", "-c", "1", "-e" if ecc else "-r", "-n",
+                              *selection(self.serial), hex(row)], "Reading security state...", 30)
         found = re.findall(r"\bVALUE\s+(0x[0-9a-fA-F]+)\b", text)
-        if len(found) != 1:
+        rows = re.findall(r"^\s*ROW\s+(0x[0-9a-fA-F]+)(?::|\s*$)", text, re.MULTILINE)
+        if len(found) != 1 or len(rows) != 1 or int(rows[0], 16) != row:
             raise FirmwareError(f"Could not read OTP row {row:#x}. No changes made by this read.")
         value = int(found[0], 16)
         if value > (0xffff if ecc else 0xffffff):
@@ -294,7 +295,7 @@ class BootOtp:
         allowed = (ecc and 0x80 <= row < 0xc0) or (not ecc and row in (*CRIT_ROWS, *FLAGS_ROWS, *BOOT_LOCKS))
         if not allowed:
             raise FirmwareError("Unsupported OTP write.")
-        run(self.tool, ["otp", "set", "-e" if ecc else "-r", "-c", "1", hex(row), hex(value),
+        run(self.tool, ["otp", "set", "-c", "1", "-e" if ecc else "-r", hex(row), hex(value),
                         *selection(self.serial)], "Programming security settings...", 30)
         if self.read(row, ecc) != value:
             raise FirmwareError(f"OTP verification failed at {row:#x}. Stop and read status before retrying.")

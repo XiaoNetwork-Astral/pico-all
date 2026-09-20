@@ -61,15 +61,18 @@ class SecurityProtocolTest(unittest.TestCase):
         if args[:2] == ['info', '-d']:
             return 'type: RP2350\nsecure boot: 1\nchipid: 0011223344556677\n'
         self.assertEqual(args[0], 'otp')
-        self.assertEqual(args[-2:], ['--ser', '0011223344556677'])
         ecc = '-e' in args
         if args[1] == 'get':
-            row = int(args[6], 16)
+            self.assertEqual(args[2:4], ['-c', '1'])
+            self.assertEqual(args[6:8], ['--ser', '0011223344556677'])
+            row = int(args[8], 16)
             code, value = self.command(('ecc' if ecc else 'raw') + f' {row:x}')
             if code:
                 raise firmware.FirmwareError('Simulated read or ECC failure')
             return f'ROW {row:#06x}: SIMULATED\n    VALUE {value:#08x}\n'
         self.assertEqual(args[1], 'set')
+        self.assertEqual(args[2:4], ['-c', '1'])
+        self.assertEqual(args[-2:], ['--ser', '0011223344556677'])
         row, value = int(args[5], 16), int(args[6], 16)
         code, _ = self.command(('setecc' if ecc else 'setraw') + f' {row:x} {value:x}')
         if code:
