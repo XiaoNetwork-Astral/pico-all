@@ -143,11 +143,37 @@ def selection(serial: str | None) -> list[str]:
     return ["--ser", serial] if serial else []
 
 
+def recovery_board(tool: str, serial: str | None) -> list[str]:
+    # Interrupted flash may break image metadata before `info -d` reaches the
+    # chip ID. These four public factory rows identify RP2350 without an image.
+    output = run(tool, ["otp", "get", "-c", "1", "-e", "-n", *selection(serial),
+                        "0x0", "0x1", "0x2", "0x3"], "Checking recovery device...", 10)
+    blocks = re.split(r"(?m)^\s*ROW\s+", output)[1:]
+    words = {}
+    for block in blocks:
+        row = re.match(r"(0x[0-9a-fA-F]+)(?::|\s)", block)
+        values = re.findall(r"\bVALUE\s+(0x[0-9a-fA-F]+)\b", block)
+        if not row or len(values) != 1:
+            raise FirmwareError("Could not identify the recovery board.")
+        index, value = int(row[1], 16), int(values[0], 16)
+        if index in words or index not in range(4) or value > 0xffff:
+            raise FirmwareError("Unexpected recovery board identity.")
+        words[index] = value
+    if len(words) != 4:
+        raise FirmwareError("Incomplete recovery board identity.")
+    found = "".join(f"{words[index]:04X}" for index in reversed(range(4)))
+    if serial and found != serial:
+        raise FirmwareError("Recovery serial does not match the selected board.")
+    return [found]
+
+
 def bootsel_boards(tool: str, serial: str | None = None) -> list[str]:
     try:
         output = run(tool, ["info", "-d", *selection(serial)], "Checking BOOTSEL mode...", 10)
     except PicotoolError as error:
         output = error.output
+        if output.strip().startswith("ERROR: Block loop is not valid"):
+            return recovery_board(tool, serial)
         # Only the plain no-device result means absence. Driver/access errors
         # carry extra diagnostics and must not trigger a mode change.
         if not re.fullmatch(r"\s*No accessible RP-series devices in BOOTSEL mode were found"

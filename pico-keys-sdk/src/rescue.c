@@ -532,7 +532,7 @@ static int cmd_reboot_bootsel(void) {
             return SW_CONDITIONS_NOT_SATISFIED();
         }
         uint32_t val = EV_RESET;
-        queue_try_add(&card_to_usb_q, &val);
+        queue_add_blocking(&card_to_usb_q, &val);
     }
     else if (P1(apdu) == 0x0) {
         // Reboot to normal mode

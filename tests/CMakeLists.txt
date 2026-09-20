@@ -102,3 +102,16 @@ if(Python3_Interpreter_FOUND)
         ENVIRONMENT "OTP_SIM_COMMAND=[\"$<TARGET_FILE:otp_root_test>\"]"
         TIMEOUT 120)
 endif()
+
+add_executable(usb_reboot_test usb_reboot_test.c)
+target_compile_definitions(usb_reboot_test PRIVATE ENABLE_EMULATION USB_ITF_CCID PICOKEYS_USB_REBOOT_TEST)
+target_include_directories(usb_reboot_test PRIVATE
+    ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/usb
+    ../pico-keys-sdk/src/usb/emulation ../pico-keys-sdk/src/compat
+    ../pico-keys-sdk/third-party/mbedtls/include)
+target_compile_options(usb_reboot_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(usb_reboot_test PRIVATE -Wl,--gc-sections)
+find_package(Threads REQUIRED)
+target_link_libraries(usb_reboot_test PRIVATE Threads::Threads)
+add_test(NAME usb_bootsel_event_delivery COMMAND usb_reboot_test)
+set_tests_properties(usb_bootsel_event_delivery PROPERTIES TIMEOUT 15)

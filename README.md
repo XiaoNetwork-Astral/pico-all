@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware for the Waveshare RP2350-One
 
-OTP initialization, Secure Boot / Lock and signed updates have been tested on an RP2350-One (A2). Its [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) still apply.
+OTP initialization, Secure Boot / Lock, invalid-signature rejection and signed updates have been tested on an RP2350-One (A2). Its [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) still apply.
 
 ## Build
 

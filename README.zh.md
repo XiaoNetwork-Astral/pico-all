@@ -4,7 +4,7 @@
 
 面向 Waveshare RP2350-One 的 FIDO2/U2F、OpenPGP/PIV、SmartCard-HSM 三合一固件
 
-已在 RP2350-One（A2）实测 OTP 初始化、Secure Boot / Lock 和签名更新；A2 的[硬件安全勘误](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/)仍适用。
+已在 RP2350-One（A2）实测 OTP 初始化、Secure Boot / Lock、无效签名拒绝和签名更新；A2 的[硬件安全勘误](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/)仍适用。
 
 ## 构建
 

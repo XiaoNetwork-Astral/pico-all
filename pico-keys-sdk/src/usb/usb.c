@@ -181,7 +181,10 @@ void usb_init(void)
     set_atr();
 }
 
-#ifdef PICO_PLATFORM
+#ifdef PICOKEYS_USB_REBOOT_TEST
+// Host regression substitutes only the hardware reset, not queue handling.
+extern void usb_secure_reboot_now(void) __attribute__((noreturn));
+#elif defined(PICO_PLATFORM)
 extern char __end__, __HeapLimit;
 extern char __StackBottom, __StackTop;
 extern char __StackOneBottom, __StackOneTop;
@@ -238,6 +241,16 @@ static void __attribute__((noreturn, noinline)) usb_secure_reboot_now(void) {
 }
 #endif
 
+// Interface changes also consume card events while waiting for an ACK or
+// draining an old transaction. A confirmed device reset must survive both.
+static void handle_card_control_event(uint32_t event) {
+#if defined(PICO_PLATFORM) || defined(PICOKEYS_USB_REBOOT_TEST)
+    if (event == EV_RESET) usb_secure_reboot_now();
+#else
+    (void)event;
+#endif
+}
+
 uint32_t timeout = 0;
 void timeout_stop(void) {
     timeout = 0;
@@ -268,6 +281,7 @@ void usb_send_event(uint32_t flag) {
         uint32_t m;
         do {
             queue_remove_blocking(&card_to_usb_q, &m);
+            handle_card_control_event(m);
         } while (m != flag + 1);
     }
 }
@@ -313,6 +327,7 @@ void card_exit(void) {
 #ifndef ENABLE_EMULATION
             mutex_exit(&mutex);
 #endif
+            handle_card_control_event(m);
         }
         led_set_mode(MODE_MOUNTED);
 #ifdef ESP_PLATFORM
@@ -353,6 +368,7 @@ int card_status(uint8_t itf) {
         //if (m != 0)
         //    printf("\n ------ M = %lu\n",m);
         if (has_m) {
+            handle_card_control_event(m);
             if (m == EV_EXEC_FINISHED) {
                 timeout_stop();
                 if (led_get_mode() == MODE_PROCESSING) {
@@ -363,11 +379,6 @@ int card_status(uint8_t itf) {
 #ifndef ENABLE_EMULATION
             else if ((m & 0xffu) == EV_PRESS_BUTTON) {
                 button_wait_start_timeout(EV_PRESS_BUTTON_GET_TIMEOUT(m));
-            }
-#endif
-#ifdef PICO_PLATFORM
-            else if (m == EV_RESET) {
-                usb_secure_reboot_now();
             }
 #endif
             return PICOKEYS_ERR_FILE_NOT_FOUND;

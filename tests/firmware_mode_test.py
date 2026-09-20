@@ -197,6 +197,19 @@ class ModeTest(unittest.TestCase):
                 firmware.management(SERIAL, [0x80, 0x1f, 1, 0, 0])
         connection.disconnect.assert_called_once()
 
+    def test_interrupted_image_can_be_identified_without_image_metadata(self):
+        identity = ''.join(f'ROW {i:#06x}: CHIPID\n VALUE {int(SERIAL[12-4*i:16-4*i],16):#06x}\n' for i in range(4))
+        with patch.object(firmware, 'run', side_effect=[
+                firmware.PicotoolError('ERROR: Block loop is not valid - no block found at 1009f7e4'), identity]) as backend:
+            self.assertEqual(firmware.ensure_bootsel('tool', SERIAL), SERIAL)
+            self.assertEqual(backend.call_args.args[1],
+                ['otp', 'get', '-c', '1', '-e', '-n', '--ser', SERIAL, '0x0', '0x1', '0x2', '0x3'])
+        for invalid in [identity.replace('0x66aa', '0x66ab'), identity + identity,
+                        identity.replace('VALUE 0x66aa', 'VALUE 0x10000'), '']:
+            with patch.object(firmware, 'run', return_value=invalid):
+                with self.assertRaises(firmware.FirmwareError):
+                    firmware.recovery_board('tool', SERIAL)
+
     def test_cli_mode_commands_and_tool_options(self):
         with patch.object(firmware, 'tool_path', return_value='tool'), \
              patch.object(firmware, 'device_mode') as operation:
