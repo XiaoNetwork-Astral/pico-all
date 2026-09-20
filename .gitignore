@@ -2,3 +2,6 @@
 /.private/
 /build/
 /pico-keys-sdk/third-party/
+
+__pycache__/
+*.pyc

@@ -23,6 +23,15 @@ Green breathing: idle · Yellow flashing: press BOOTSEL · Blue: firmware update
 
 New U2F credentials work with a button press after reconnecting, independently of the FIDO2 PIN. Legacy U2F credentials still need a PIN-unlocked session; re-register to use the new behavior.
 
+## Firmware tool
+
+Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. English menu: board info, local signing and verified flashing. Connect in BOOTSEL mode for board operations.
+
+```sh
+python -m pip install -r requirements.txt
+python firmware.py
+```
+
 ## License
 
 [AGPL-3.0](LICENSE) · Based on Pico FIDO, Pico OpenPGP, Pico HSM and Pico Keys SDK; authors and pinned revisions are listed in [upstream.json](upstream.json)

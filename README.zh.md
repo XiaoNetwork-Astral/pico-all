@@ -23,6 +23,15 @@ cmake --build build
 
 新 U2F 凭据插入后按键即可使用，不依赖 FIDO2 PIN 解锁；旧 U2F 凭据仍需先解锁，重新注册即可使用新方式。
 
+## 固件工具
+
+需要 Python 3.10+，并将 [picotool](https://github.com/raspberrypi/picotool) 加入 PATH。英文菜单提供板内信息、本地签名和校验刷写；操作开发板时需进入 BOOTSEL 模式。
+
+```sh
+python -m pip install -r requirements.txt
+python firmware.py
+```
+
 ## 许可证
 
 [AGPL-3.0](LICENSE) · 基于 Pico FIDO、Pico OpenPGP、Pico HSM 与 Pico Keys SDK；作者和引用版本见 [upstream.json](upstream.json)
