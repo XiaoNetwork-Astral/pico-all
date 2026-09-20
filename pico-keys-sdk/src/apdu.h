@@ -73,6 +73,7 @@ extern struct apdu apdu;
 
 extern uint16_t set_res_sw(uint8_t sw1, uint8_t sw2);
 extern int process_apdu(void);
+// itf is a global USB interface number, not a HID or smart-card driver index.
 extern uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer);
 extern void apdu_finish(void);
 extern uint16_t apdu_next(void);

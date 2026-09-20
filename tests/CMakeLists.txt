@@ -26,3 +26,14 @@ target_include_directories(led_test PRIVATE
 target_compile_options(led_test PRIVATE -UNDEBUG)
 add_test(NAME led_state_and_timing COMMAND led_test)
 set_tests_properties(led_state_and_timing PROPERTIES TIMEOUT 15)
+
+add_executable(apdu_transport_test apdu_transport_test.c ../pico-keys-sdk/src/apdu.c)
+target_compile_definitions(apdu_transport_test PRIVATE USB_ITF_HID USB_ITF_CCID)
+target_include_directories(apdu_transport_test PRIVATE
+    ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/usb
+    ../pico-keys-sdk/third-party/mbedtls/include
+)
+target_compile_options(apdu_transport_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(apdu_transport_test PRIVATE -Wl,--gc-sections)
+add_test(NAME apdu_transport_routing COMMAND apdu_transport_test)
+set_tests_properties(apdu_transport_routing PROPERTIES TIMEOUT 15)

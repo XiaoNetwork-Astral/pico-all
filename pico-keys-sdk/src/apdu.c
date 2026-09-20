@@ -184,13 +184,13 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
         if (apdu.rlen <= apdu.ne) {
 #ifndef ENABLE_EMULATION
 #ifdef USB_ITF_HID
-            if (itf == ITF_HID_CTAP) {
-                driver_exec_finished_cont_hid(itf, apdu.rlen + 2, (uint16_t)(rdata_gr - apdu.rdata));
+            if (itf == ITF_HID) {
+                driver_exec_finished_cont_hid(ITF_HID_CTAP, apdu.rlen + 2, (uint16_t)(rdata_gr - apdu.rdata));
             }
 #endif
 #ifdef USB_ITF_CCID
-            if (itf == ITF_SC_CCID || itf == ITF_SC_WCID) {
-                driver_exec_finished_cont_ccid(itf, apdu.rlen + 2, (uint16_t)(rdata_gr - apdu.rdata));
+            if (itf == ITF_CCID || itf == ITF_WCID) {
+                driver_exec_finished_cont_ccid(itf == ITF_CCID ? ITF_SC_CCID : ITF_SC_WCID, apdu.rlen + 2, (uint16_t)(rdata_gr - apdu.rdata));
             }
 #endif
 #else
@@ -214,13 +214,13 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
             }
 #ifndef ENABLE_EMULATION
 #ifdef USB_ITF_HID
-            if (itf == ITF_HID_CTAP) {
-                driver_exec_finished_cont_hid(itf, (uint16_t)(apdu.ne + 2), (uint16_t)(rdata_gr - apdu.ne - apdu.rdata));
+            if (itf == ITF_HID) {
+                driver_exec_finished_cont_hid(ITF_HID_CTAP, (uint16_t)(apdu.ne + 2), (uint16_t)(rdata_gr - apdu.ne - apdu.rdata));
             }
 #endif
 #ifdef USB_ITF_CCID
-            if (itf == ITF_SC_CCID || itf == ITF_SC_WCID) {
-                driver_exec_finished_cont_ccid(itf, (uint16_t)(apdu.ne + 2), (uint16_t)(rdata_gr - apdu.ne - apdu.rdata));
+            if (itf == ITF_CCID || itf == ITF_WCID) {
+                driver_exec_finished_cont_ccid(itf == ITF_CCID ? ITF_SC_CCID : ITF_SC_WCID, (uint16_t)(apdu.ne + 2), (uint16_t)(rdata_gr - apdu.ne - apdu.rdata));
             }
 #endif
 #else
