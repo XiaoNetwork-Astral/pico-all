@@ -13,7 +13,7 @@
       "name": "PicoKeys Firmware",
       "id": 0,
       "start": 0,
-      "size": "2048K",
+      "size": "1024K",
       "families": ["rp2350-arm-s", "rp2350-riscv"],
       "permissions": {
         "secure": "rw",
@@ -24,8 +24,8 @@
     {
       "name": "PicoKeys Data",
       "id": 1,
-      "start": "2056K",
-      "size": "2040K",
+      "start": "1032K",
+      "size": "3064K",
       "families": ["data"],
       "permissions": {
         "secure": "rw",
@@ -39,7 +39,7 @@
     {
       "name": "PicoKeys Binding",
       "id": 2,
-      "start": "2048K",
+      "start": "1024K",
       "size": "8K",
       "families": ["data"],
       "permissions": {

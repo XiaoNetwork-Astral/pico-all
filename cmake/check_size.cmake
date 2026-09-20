@@ -1,0 +1,5 @@
+file(SIZE "${IMAGE}" image_size)
+if(image_size GREATER 1048576)
+    message(FATAL_ERROR "Firmware exceeds its 1 MiB partition (${image_size} bytes)")
+endif()
+message(STATUS "Firmware partition: ${image_size} / 1048576 bytes")

@@ -20,7 +20,7 @@ add_compile_definitions(ENABLE_OATH_APP=1 ENABLE_OTP_APP=1 ENABLE_POWER_ON_RESET
 include(pico-keys-sdk/picokeys_sdk_import.cmake)
 # picokeys_sdk carries its sources via INTERFACE; do not compile them twice.
 target_link_libraries(pico_all PRIVATE picokeys_sdk)
-target_sources(pico_all PRIVATE src/integration.c)
+target_sources(pico_all PRIVATE src/integration.c src/app_registry.c)
 target_include_directories(pico_all PRIVATE ${INCLUDES})
 foreach(component IN ITEMS fido openpgp hsm)
     file(GLOB component_sources CONFIGURE_DEPENDS src/${component}/*.c)
@@ -43,3 +43,8 @@ pico_set_binary_version(pico_all MAJOR 0 MINOR 1)
 pico_enable_stdio_usb(pico_all 0)
 pico_enable_stdio_uart(pico_all 0)
 pico_add_extra_outputs(pico_all)
+
+add_custom_command(TARGET pico_all POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -DIMAGE=${CMAKE_CURRENT_BINARY_DIR}/pico_all.bin
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_size.cmake
+)
