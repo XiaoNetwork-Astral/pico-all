@@ -49,6 +49,9 @@ class SecurityProtocolTest(unittest.TestCase):
         self.transport = patch.object(firmware, 'run', side_effect=self.backend)
         self.transport.start()
         self.addCleanup(self.transport.stop)
+        modes = patch.object(firmware, 'ensure_bootsel', return_value='0011223344556677')
+        modes.start()
+        self.addCleanup(modes.stop)
         self.otp = firmware.BootOtp('simulator', '0011223344556677')
         self.fp = hashlib.sha256(b'local simulated signing public key').digest()
 

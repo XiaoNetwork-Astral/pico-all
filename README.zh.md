@@ -25,7 +25,7 @@ cmake --build build
 
 ## 固件工具
 
-需要 Python 3.10+，并将 [picotool](https://github.com/raspberrypi/picotool) 加入 PATH。一个脚本提供板内信息、本地签名、校验刷写和安全配置。固件与熔丝操作使用 BOOTSEL 模式；清空准备和启动检查使用正常模式。
+需要 Python 3.10+，并将 [picotool](https://github.com/raspberrypi/picotool) 加入 PATH。一个脚本提供板内信息、本地签名、校验刷写和安全配置。命令会在需要时请求进入 BOOTSEL；黄灯闪烁后短按并松开按钮即可。清空准备和启动检查使用正常模式。
 
 ```sh
 python -m pip install -r requirements.txt
@@ -33,6 +33,8 @@ python firmware.py -h
 ```
 
 使用 `-h` 查看速查，`--help` 查看详情和示例，例如 `python firmware.py security enable --help`。固件路径统一作为位置参数：`python firmware.py security load-key signed.uf2 -s SERIAL`。
+
+使用 `python firmware.py device bootsel` 进入更新模式，`python firmware.py device reboot` 返回正常固件，无需刷写或按 RESET。连接多块板子时加上 `-s SERIAL`。清空准备和启用之间不要重启正常固件。
 
 安全配置顺序：**登记密钥 → 加固 → 清空准备 → 启用 → 启动检查 → 锁定**。各命令的 `--help` 会说明当前步骤；默认只预览，提供 `--apply` 后才进入确认。不可逆阶段之间需要彻底断电并测试。
 

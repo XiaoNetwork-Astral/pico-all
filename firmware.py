@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 try:
     from rich.console import Console
@@ -29,6 +30,13 @@ DEFAULT_KEY = ROOT / ".private" / "firmware-signing.pem"
 
 class FirmwareError(Exception):
     pass
+
+
+class PicotoolError(FirmwareError):
+    def __init__(self, output: str):
+        self.output = output
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        super().__init__("\n".join(lines[-6:]) or "picotool failed.")
 
 
 def tool_path(value: str | None) -> str:
@@ -53,14 +61,12 @@ def run(tool: str, args: list[str], label: str, timeout: int = 120) -> str:
             result = subprocess.run([tool, *args], capture_output=True, text=True,
                                     errors="replace", timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
-            raise FirmwareError("Device did not finish in time. Reconnect in BOOTSEL mode and retry.") from None
+            raise FirmwareError("picotool timed out. Check the USB connection and retry the command.") from None
         except OSError:
             raise FirmwareError("Could not start picotool. Check its installation.") from None
     output = result.stdout + result.stderr
     if result.returncode:
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        detail = "\n".join(lines[-6:]) or "picotool failed."
-        raise FirmwareError(detail)
+        raise PicotoolError(output)
     return output
 
 
@@ -137,8 +143,84 @@ def selection(serial: str | None) -> list[str]:
     return ["--ser", serial] if serial else []
 
 
+def bootsel_boards(tool: str, serial: str | None = None) -> list[str]:
+    try:
+        output = run(tool, ["info", "-d", *selection(serial)], "Checking BOOTSEL mode...", 10)
+    except PicotoolError as error:
+        output = error.output
+        # Only the plain no-device result means absence. Driver/access errors
+        # carry extra diagnostics and must not trigger a mode change.
+        if not re.fullmatch(r"\s*No accessible RP-series devices in BOOTSEL mode were found"
+                            r"(?: with serial number [0-9a-fA-F]{16})?\.\s*", " ".join(output.split())):
+            raise
+        return []
+    ids = re.findall(r"^\s*chipid:\s*(?:0x)?([0-9a-fA-F]{16})\s*$", output, re.MULTILINE)
+    chips = re.findall(r"^\s*type:\s*(\S+)", output, re.MULTILINE)
+    if not ids or len(ids) != len(chips) or any(chip != "RP2350" for chip in chips):
+        raise FirmwareError("Could not identify the BOOTSEL board. Select an RP2350 with --serial.")
+    ids = [value.upper() for value in ids]
+    if serial and any(value != serial for value in ids):
+        raise FirmwareError("BOOTSEL serial does not match the selected board.")
+    return ids
+
+
+def detect_board(tool: str, serial: str | None) -> tuple[str, str]:
+    if serial is not None:
+        serial = BootOtp(tool, serial).serial
+    boot = bootsel_boards(tool, serial)
+    # An explicit serial already identifies the target; no PC/SC is needed.
+    if serial and boot == [serial]:
+        return serial, "bootsel"
+    normal = normal_boards()
+    if serial:
+        normal = [value for value in normal if value == serial]
+    if len(boot) + len(normal) > 1:
+        raise FirmwareError("Multiple boards found. Select one with --serial ID.")
+    if boot:
+        return boot[0], "bootsel"
+    if normal:
+        return normal[0], "normal"
+    raise FirmwareError("Board not found. Connect Pico All and check --serial and USB drivers.")
+
+
+def wait_for_mode(tool: str, serial: str, mode: str, timeout: float = 30) -> None:
+    deadline = time.monotonic() + timeout
+    console.print("Waiting for " + serial + " in " + mode + " mode...", style="dim")
+    while time.monotonic() < deadline:
+        boards = bootsel_boards(tool, serial) if mode == "bootsel" else normal_boards(waiting=True)
+        if boards.count(serial) == 1:
+            return
+        time.sleep(0.5)
+    raise FirmwareError(f"Board {serial} did not appear in {mode} mode. Check USB and retry; no further operation was started.")
+
+
+def ensure_bootsel(tool: str, serial: str | None) -> str:
+    serial, mode = detect_board(tool, serial)
+    if mode != "bootsel":
+        console.print("BOOTSEL is needed. When the LED flashes yellow, press and release BOOTSEL.", style="yellow")
+        management(serial, [0x80, 0x1f, 1, 0, 0])
+        wait_for_mode(tool, serial, "bootsel")
+    return serial
+
+
+def device_mode(tool: str, action: str, serial: str | None) -> None:
+    if action == "bootsel":
+        serial = ensure_bootsel(tool, serial)
+        console.print(f"Board {serial} is ready in BOOTSEL mode.", style="green")
+        return
+    serial, mode = detect_board(tool, serial)
+    if mode == "bootsel":
+        run(tool, ["reboot", "-a", *selection(serial)], "Starting firmware...", 30)
+    else:
+        management(serial, [0x80, 0x1f, 0, 0, 0])
+        # Firmware schedules a watchdog reboot after acknowledging the APDU.
+        time.sleep(1)
+    wait_for_mode(tool, serial, "normal")
+    console.print(f"Board {serial} is running Pico All.", style="green")
+
+
 def board_info(tool: str, serial: str | None) -> None:
-    console.print("Connect in BOOTSEL mode: hold BOOTSEL while plugging in.", style="dim")
+    serial = ensure_bootsel(tool, serial)
     text = run(tool, ["info", "-b", "-l", "-d", *selection(serial)], "Reading board firmware...", 30)
     table = Table(title="Board firmware", show_header=False, box=None, padding=(0, 2))
     table.add_column(style="cyan")
@@ -160,15 +242,15 @@ def board_info(tool: str, serial: str | None) -> None:
     if not table.row_count:
         raise FirmwareError("No board information returned. Check BOOTSEL mode and --serial.")
     console.print(table)
-    console.print("Board remains in BOOTSEL mode. Reconnect normally to start it.", style="dim")
+    console.print(f"To start firmware: python firmware.py device reboot -s {serial}", style="dim")
 
 
 def flash(tool: str, firmware: str, serial: str | None, yes: bool = False) -> None:
     source = uf2_file(firmware)
     run(tool, ["info", "-b", str(source)], "Checking firmware...")
     console.print("Firmware: " + str(source), markup=False)
-    console.print("Connect in BOOTSEL mode: hold BOOTSEL while plugging in.", style="dim")
     approved("Flash this firmware and restart the board?", yes)
+    serial = ensure_bootsel(tool, serial)
     # picotool refuses ambiguous targets. Keep its partition checks and verify
     # every write; never use erase, ignore-partitions, or OTP commands.
     run(tool, ["load", "-v", "-x", str(source), *selection(serial)], "Flashing and verifying...", 180)
@@ -338,32 +420,74 @@ def boot_proof_path(serial: str) -> Path:
     return ROOT / ".private" / ("boot-check-" + serial.upper() + ".json")
 
 
-def management(serial: str, command: list[int]) -> bytes:
+MANAGEMENT_AID = [0, 0xa4, 4, 0, 8, 0xa0, 0x58, 0x3f, 0xc1, 0x9b, 0x7e, 0x4f, 0x21]
+
+
+def management_access(serial: str | None = None, command: list[int] | None = None,
+                      waiting: bool = False) -> bytes | list[str]:
     from smartcard.System import readers
-    from smartcard.Exceptions import CardConnectionException
-    BootOtp("", serial)
+    from smartcard.Exceptions import (CardConnectionException, NoCardException,
+                                      NoReadersException, SmartcardException)
+    if serial is not None:
+        serial = BootOtp("", serial).serial
     connections, matches = [], []
     try:
-        for reader in readers():
+        try:
+            available = readers()
+        except NoReadersException:
+            available = []
+        for reader in available:
             if "Pico All" not in str(reader):
                 continue
             connection = reader.createConnection()
-            connection.connect()
             connections.append(connection)
-            data, sw1, sw2 = connection.transmit([0, 0xa4, 4, 0, 8, 0xa0, 0x58, 0x3f, 0xc1, 0x9b, 0x7e, 0x4f, 0x21])
-            if (sw1, sw2) == (0x90, 0) and len(data) == 12 and bytes(data[4:]).hex().upper() == serial.upper():
-                matches.append(connection)
+            try:
+                connection.connect()
+                data, sw1, sw2 = connection.transmit(MANAGEMENT_AID)
+            except NoCardException:
+                continue
+            except CardConnectionException:
+                if waiting:
+                    continue  # A reader may still be disappearing after reboot.
+                raise
+            if (sw1, sw2) == (0x90, 0) and len(data) == 12:
+                found = bytes(data[4:]).hex().upper()
+                if serial is None or found == serial:
+                    matches.append((found, connection))
+        if command is None:
+            return [found for found, _ in matches]
         if len(matches) != 1:
-            raise FirmwareError("Connect exactly the selected board in normal mode.")
-        data, sw1, sw2 = matches[0].transmit(command)
+            raise FirmwareError("Connect exactly the selected board in normal mode. To leave BOOTSEL, use device reboot -s ID.")
+        try:
+            data, sw1, sw2 = matches[0][1].transmit(command)
+        except CardConnectionException:
+            # Reboot may remove CCID before Windows receives the response.
+            # The caller must verify the same board in the destination mode.
+            if command in ([0x80, 0x1f, 0, 0, 0], [0x80, 0x1f, 1, 0, 0]):
+                return b""
+            raise
         if (sw1, sw2) != (0x90, 0):
             raise FirmwareError(f"Board declined the operation ({sw1:02X}{sw2:02X}). Check its state or button confirmation.")
         return bytes(data)
-    except CardConnectionException:
-        raise FirmwareError("Could not communicate with the board. Reconnect normally and retry.") from None
+    except SmartcardException as error:
+        # Windows may briefly stop PC/SC while the last CCID device reboots.
+        if waiting and (error.hresult & 0xffffffff) in (0x8010001d, 0x8010001e):
+            return []
+        raise FirmwareError("Could not communicate through PC/SC. Check the smart-card service and USB connection. " + str(error)) from None
     finally:
         for connection in connections:
-            connection.disconnect()
+            try:
+                connection.disconnect()
+            except SmartcardException:
+                pass  # Removal during reboot must not replace the real result.
+
+
+def normal_boards(waiting: bool = False) -> list[str]:
+    return management_access(waiting=waiting)
+
+
+def management(serial: str, command: list[int]) -> bytes:
+    return management_access(serial, command)
 
 
 def prepare_storage(serial: str, apply: bool) -> None:
@@ -438,6 +562,7 @@ def security(tool: str, action: str, serial: str, firmware: str | None = None,
         prove_boot(tool, serial, firmware)
         return
     otp = BootOtp(tool, serial)
+    ensure_bootsel(tool, otp.serial)
     board = otp.board()
     state = boot_state(otp)
     show_security(state)
@@ -543,7 +668,7 @@ class CliParser(argparse.ArgumentParser):
 
 def parser() -> argparse.ArgumentParser:
     top = CliParser(prog="firmware.py", description="Manage Pico All firmware and board security.",
-                    details="Firmware operations use BOOTSEL mode. Security Prepare and Prove use normal mode.",
+                    details="Commands request BOOTSEL when needed: press and release the button when the LED flashes yellow.\nSecurity Prepare and Prove use normal mode; device reboot returns there without flashing.",
                     examples="  python firmware.py info\n"
                              "  python firmware.py sign firmware.uf2 -k .private/key.pem\n"
                              "  python firmware.py flash firmware.signed.uf2\n"
@@ -567,7 +692,7 @@ def parser() -> argparse.ArgumentParser:
     connection(top)
     commands = top.add_subparsers(dest="command", title="Commands", metavar="COMMAND")
     child(commands, "info", "Read board firmware information",
-          "Connect in BOOTSEL mode. Use --serial when more than one board is connected.",
+          "Switches to BOOTSEL if needed and stays there. Use device reboot to return to firmware.\nUse --serial when more than one board is connected.",
           "  python firmware.py info -s 0011223344556677", device=True)
     signer = child(commands, "sign", "Sign a UF2 with a local key",
                    "Use a secp256k1 PEM private key. --new-key creates a key and never overwrites one.\n"
@@ -583,16 +708,30 @@ def parser() -> argparse.ArgumentParser:
     output.add_argument("-o", "--output", metavar="FILE", help="Signed UF2 destination")
     output.add_argument("-y", "--yes", action="store_true", help="Allow replacing the output without a prompt")
     updater = child(commands, "flash", "Flash a UF2, verify it and restart",
-                    "Connect in BOOTSEL mode. Writes are read back before restart.\n"
-                    "--yes skips this flash confirmation; it does not authorize OTP operations.",
+                    "Requests BOOTSEL with board-button confirmation if needed. Writes are read back before restart.\n"
+                    "--yes skips the flash prompt, but not the board button or security confirmations.",
                     "  python firmware.py flash signed.uf2 -s 0011223344556677", device=True)
     updater.add_argument("firmware", metavar="FILE", help="Firmware UF2")
     updater.add_argument_group("Confirmation options").add_argument(
         "-y", "--yes", action="store_true", help="Skip the flash confirmation")
+    device = child(commands, "device", "Switch board modes",
+                   "BOOTSEL entry requires a button press in normal firmware. Reboot starts installed firmware.\n"
+                   "No firmware is flashed. Starting firmware performs its usual boot initialization.",
+                   "  python firmware.py device bootsel\n  python firmware.py device reboot", device=True)
+    modes = device.add_subparsers(dest="action", title="Device commands", metavar="COMMAND")
+    for name, summary, detail in [
+        ("bootsel", "Enter firmware update mode", "Requests board-button confirmation if needed, then waits for the same serial in BOOTSEL."),
+        ("reboot", "Start or restart normal firmware", "Leaves idle BOOTSEL without flashing or pressing RESET. Waits for Pico All to reconnect.\n"
+         "Do not run between Security Prepare and Enable: starting firmware can recreate application data."),
+    ]:
+        mode = child(modes, name, summary, detail,
+                     f"  python firmware.py device {name} -s 0011223344556677", device=True)
+        mode.set_defaults(selected_parser=mode)
+    device.set_defaults(selected_parser=device)
     secure = child(commands, "security", "Inspect and configure RP2350 security",
                    "Stages: load-key -> harden -> prepare -> enable -> prove -> lock.\n"
                    "Power-cycle and test between irreversible stages. Prepare and Prove use normal mode;\n"
-                   "the other stages use BOOTSEL. Every stage requires an exact --serial.\n"
+                   "the other stages request BOOTSEL if needed. Every stage requires an exact --serial.\n"
                    "Writes default to a preview. --apply enables interactive confirmation, never bypasses it.",
                    "  python firmware.py security status -s 0011223344556677\n"
                    "  python firmware.py security enable --help\n"
@@ -634,11 +773,11 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command is None:
         cli.print_help()
         return 0
-    if arguments.command == "security":
+    if arguments.command in ("security", "device"):
         if arguments.action is None:
             arguments.selected_parser.print_help()
             return 0
-        if not arguments.serial:
+        if arguments.command == "security" and not arguments.serial:
             arguments.selected_parser.error("the following argument is required: -s/--serial")
     try:
         # Normal-mode APDUs do not need the picotool executable.
@@ -652,12 +791,14 @@ def main(argv: list[str] | None = None) -> int:
             sign(tool, arguments.firmware, arguments.key, arguments.output, arguments.new_key, arguments.yes)
         elif arguments.command == "flash":
             flash(tool, arguments.firmware, arguments.serial, arguments.yes)
+        elif arguments.command == "device":
+            device_mode(tool, arguments.action, arguments.serial)
         elif arguments.command == "security":
             security(tool, arguments.action, arguments.serial, getattr(arguments, "firmware", None),
                      getattr(arguments, "slot", 0), getattr(arguments, "apply", False))
         return 0
     except KeyboardInterrupt:
-        error_console.print("Interrupted. If flashing, reconnect in BOOTSEL mode and retry.", style="yellow")
+        error_console.print("Interrupted. Check the board before retrying. Use device reboot to leave idle BOOTSEL.", style="yellow")
         return 130
     except (FirmwareError, OSError, EOFError) as error:
         error_console.print(str(error) or "Input closed.", style="red", markup=False)

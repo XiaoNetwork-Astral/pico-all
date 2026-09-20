@@ -68,7 +68,8 @@ class FirmwareToolTest(unittest.TestCase):
                 self.assertEqual(args, ['load', '-v', '-x', str(self.source.resolve()), '--ser', 'BOARD123'])
                 raise firmware.FirmwareError('Write failed')
             return 'firmware metadata'
-        with patch.object(firmware, 'run', side_effect=backend):
+        with patch.object(firmware, 'run', side_effect=backend), \
+             patch.object(firmware, 'ensure_bootsel', return_value='BOARD123'):
             with self.assertRaisesRegex(firmware.FirmwareError, 'Write failed'):
                 firmware.flash('picotool', str(self.source), 'BOARD123', yes=True)
         self.assertNotIn('Flashed and verified', self.capture.getvalue())

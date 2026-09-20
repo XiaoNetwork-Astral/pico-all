@@ -18,15 +18,15 @@ class CliTest(unittest.TestCase):
 
     def test_no_arguments_and_group_help_do_not_find_tools(self):
         with patch.object(firmware, 'tool_path') as tools:
-            for argv in [[], ['security']]:
+            for argv in [[], ['security'], ['device']]:
                 code, out, err = self.invoke(argv)
                 self.assertEqual(code, 0)
-                self.assertIn('Commands' if not argv else 'Security commands', out)
+                self.assertIn('Commands' if not argv else argv[0].capitalize() + ' commands', out)
                 self.assertFalse(err)
             tools.assert_not_called()
 
     def test_short_and_long_help_work_at_every_level(self):
-        for path in [[], ['sign'], ['security'], ['security', 'enable']]:
+        for path in [[], ['sign'], ['device'], ['device', 'reboot'], ['security'], ['security', 'enable']]:
             with patch.object(firmware, 'tool_path') as tools:
                 short = self.invoke([*path, '-h'])
                 long = self.invoke([*path, '--help'])
