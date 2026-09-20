@@ -2,44 +2,85 @@
 
 English | [中文](README.zh.md)
 
-FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware for the Waveshare RP2350-One
+Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware.
 
-OTP initialization, Secure Boot / Lock, invalid-signature rejection and signed updates have been tested on an RP2350-One (A2). Its [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) still apply.
+## Features
+
+- FIDO2 passkeys and U2F authentication with physical button confirmation.
+- OpenPGP and PIV smart-card keys, plus SmartCard-HSM.
+- OATH TOTP/HOTP accounts and programmable OTP slots.
+- Local firmware signing, verified updates and mode switching with one Python script.
+- Optional Secure Boot, OTP device-root protection and permanent signing-key lock.
+
+Protocol and security flows have been tested on RP2350-One (A2). End-to-end compatibility with browsers and other client applications is still being validated.
+
+## Download and install
+
+Download `pico_all.uf2`, `firmware.py` and `requirements.txt` from [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases). **We publish unsigned firmware only. Generate your own signing key locally and sign each release before installing it.**
+
+Install Python 3.10+ and [picotool 2.3.1+](https://github.com/raspberrypi/picotool/releases), with `picotool` on PATH. In the download folder:
+
+```sh
+python -m pip install -r requirements.txt
+python firmware.py sign pico_all.uf2 -k .private/my-key.pem --new-key
+python firmware.py flash pico_all.signed.uf2
+```
+
+Use `--new-key` only for your first key. Keep the private key local and backed up offline; never upload, sync or commit it. A board with Secure Boot already enabled needs its registered key, not a newly generated one. Signing a file does not enable Secure Boot.
+
+For a new board, hold BOOT while connecting it once to enter BOOTSEL. Once Pico All is installed, the script requests update mode automatically: press and release BOOTSEL when the LED flashes yellow. Existing credentials from other firmware are not migrated.
+
+## Update and manage
+
+Sign later releases with the **same key**, then flash:
+
+```sh
+python firmware.py sign pico_all.uf2 -k .private/my-key.pem
+python firmware.py flash pico_all.signed.uf2
+```
+
+| Command | Action |
+| --- | --- |
+| `python firmware.py info` | Read installed firmware information; stays in BOOTSEL |
+| `python firmware.py device bootsel` | Enter update mode with button confirmation |
+| `python firmware.py device reboot` | Return to normal firmware without flashing |
+| `python firmware.py security status -s SERIAL` | Read security settings; requests BOOTSEL if needed |
+| `python firmware.py --help` | Show commands and examples |
+
+With multiple boards, add `-s SERIAL`. Updates read back the written firmware before restarting and preserve existing Pico All credentials.
+
+## LED
+
+| Light | Meaning |
+| --- | --- |
+| Green, slow breathing | Idle; brightness 1, about a 2-second cycle |
+| Yellow, fast flashing | Press and release BOOTSEL to confirm |
+| Blue | Firmware update mode |
+| Red flashes | Confirmation timed out |
+
+New U2F credentials work after reconnecting without first unlocking a FIDO2 PIN session. Older U2F credentials may need re-registration for this behavior.
+
+## Optional security setup
+
+`firmware.py security` provides staged setup: **load-key → harden → prepare → enable → prove → lock**. Read `python firmware.py security --help` and each stage's `--help` before proceeding. Every stage requires `-s SERIAL`; writes preview changes unless you add `--apply` and confirm.
+
+Prepare deletes credentials, PINs and settings. Continue directly to Enable without rebooting the application between them. Follow the power-cycle checks at the other stages. OTP device roots initialize only after protected signed boot and remain across updates. Lock permanently fixes the trusted signing key; future updates still work with that key.
+
+RP2350 A2 has [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) that these settings cannot fix.
 
 ## Build
 
-Requires an Arm toolchain, Pico SDK 2.3.1, CMake 3.31+ and Ninja
+Requires Git, an Arm toolchain, Pico SDK 2.3.1, CMake 3.31+ and Ninja. Dependencies are fetched on the first build.
 
 ```sh
+git clone https://github.com/XiaoNetwork-Astral/pico-all.git
+cd pico-all
 cmake -S . -B build -G Ninja -DPICO_SDK_PATH=/path/to/pico-sdk
 cmake --build build
 ```
 
-Enter BOOTSEL mode and copy `build/pico_all.uf2` to the board's USB drive. With Secure Boot enabled, sign it with the registered key first. Existing credentials from upstream firmware are not migrated.
+Output: unsigned `build/pico_all.uf2`. The default target is RP2350-One.
 
-## Use
+## License and credits
 
-Green breathing: idle · Yellow flashing: press BOOTSEL · Blue: firmware update mode · Red flashes: confirmation timed out
-
-New U2F credentials work with a button press after reconnecting, independently of the FIDO2 PIN. Legacy U2F credentials still need a PIN-unlocked session; re-register to use the new behavior.
-
-## Firmware tool
-
-Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. One script for board info, local signing, verified flashing and security configuration. Commands request BOOTSEL when needed; press and release the button when the LED flashes yellow. Prepare and Prove use normal mode.
-
-```sh
-python -m pip install -r requirements.txt
-python firmware.py -h
-```
-
-Use `-h` for a quick reference and `--help` for details and examples, including `python firmware.py security enable --help`. Firmware paths are positional: `python firmware.py security load-key signed.uf2 -s SERIAL`.
-
-Use `python firmware.py device bootsel` to enter update mode, and `python firmware.py device reboot` to return to firmware without flashing or pressing RESET. With multiple boards, add `-s SERIAL`. Do not reboot between Prepare and Enable.
-
-Security stages: **Load key → Harden → Prepare → Enable → Prove → Lock**. Each command explains its stage in `--help`; security commands preview changes unless `--apply` is supplied. Power-cycle and test between irreversible stages.
-
-OTP device roots initialize automatically only after signed boot and debug protection are active. First-time setup requires empty credential storage; Prepare explicitly clears credentials, PINs and settings with a board-button confirmation. Existing roots are retained across updates. Lock disables key rotation; keep the signing key backed up offline. Signed BOOTSEL updates remain available.
-
-## License
-
-[AGPL-3.0](LICENSE) · Based on Pico FIDO, Pico OpenPGP, Pico HSM and Pico Keys SDK; authors and pinned revisions are listed in [upstream.json](upstream.json)
+[AGPL-3.0](LICENSE). Based on [Pico FIDO](https://github.com/polhenarejos/pico-fido), [Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp), [Pico HSM](https://github.com/polhenarejos/pico-hsm) and [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk) by Pol Henarejos and contributors. Original copyright notices are preserved; pinned revisions are listed in [upstream.json](upstream.json).
