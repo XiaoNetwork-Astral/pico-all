@@ -71,6 +71,13 @@ static inline void ws2812_program_init(PIO pio, uint sm, uint offset, uint pin, 
 }
 
 static void led_driver_init_ws2812(void) {
+#ifdef WAVESHARE_RP2350_ONE
+    // This board's RGB LED uses RGB byte order; preserve explicit overrides.
+    if (!phy_data.led_order_present) {
+        phy_data.led_order = PHY_LED_ORDER_RGB;
+        phy_data.led_order_present = true;
+    }
+#endif
     PIO pio = pio0;
     int sm = 0;
     uint offset = pio_add_program(pio, &ws2812_program);
