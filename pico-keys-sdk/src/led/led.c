@@ -107,9 +107,9 @@ void led_blinking_task(void) {
     // Avoid turning routine, short host polling into visible flicker.
     if (mode == MODE_PROCESSING && now - mode_started < 150) mode = MODE_MOUNTED;
     if (mode == MODE_MOUNTED) {
-        // Four-second smooth breathing; short host polling preserves its phase.
-        uint32_t phase = (((now - breath_started) / 20u) * 20u) % 4000u;
-        float ramp = (float)(phase < 2000u ? 2000u - phase : phase - 2000u) / 2000.0f;
+        // One-second smooth breathing; short host polling preserves its phase.
+        uint32_t phase = (((now - breath_started) / 10u) * 10u) % 1000u;
+        float ramp = (float)(phase < 500u ? 500u - phase : phase - 500u) / 500.0f;
         float progress = ramp * ramp * (3.0f - 2.0f * ramp);
         led_render(LED_COLOR_GREEN, MAX_BTNESS, progress);
         return;

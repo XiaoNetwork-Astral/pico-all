@@ -29,25 +29,25 @@ int main(void) {
     assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
     assert(output_progress == 1.0f);
     float previous = output_progress;
-    for (uint32_t t = 120; t <= 2100; t += 20) {
+    for (uint32_t t = 120; t <= 600; t += 20) {
         tick(t);
         assert(output_progress <= previous);
         previous = output_progress;
     }
     assert(color == LED_COLOR_OFF && output_progress == 0.0f);
-    for (uint32_t t = 2120; t <= 4100; t += 20) {
+    for (uint32_t t = 620; t <= 1100; t += 20) {
         tick(t);
         assert(output_progress >= previous);
         previous = output_progress;
     }
     assert(output_progress == 1.0f);
     // Short requests must not restart the breath at its brightest point.
-    tick(5100);
+    tick(1350);
     float midpoint = output_progress;
     assert(midpoint > 0.49f && midpoint < 0.51f);
-    mode(MODE_PROCESSING, 5100);
+    mode(MODE_PROCESSING, 1350);
     assert(output_progress == midpoint);
-    mode(MODE_MOUNTED, 5100);
+    mode(MODE_MOUNTED, 1350);
     assert(output_progress == midpoint);
     tick(10000);
     assert(color == LED_COLOR_GREEN);
@@ -100,7 +100,7 @@ int main(void) {
     assert(color == LED_COLOR_OFF);
     mode(MODE_MOUNTED, 500);
     mode(MODE_PROCESSING, 510);
-    mode(MODE_MOUNTED, 600);
+    mode(MODE_MOUNTED, 650);
     assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
     mode(MODE_NOT_MOUNTED, 700);
     assert(color == LED_COLOR_MAGENTA);
