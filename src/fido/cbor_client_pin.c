@@ -889,6 +889,15 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(ret);
         }
 
+        // A verified PIN must unlock the same device key used by legacy U2F.
+        // Validate the wrapped key before advertising an unlocked session.
+        ret = load_keydev(keydev);
+        mbedtls_platform_zeroize(keydev, sizeof(keydev));
+        keydev_unlocked = ret == PICOKEYS_OK;
+        if (ret != PICOKEYS_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+
         pin_data[0] = MAX_PIN_RETRIES;
         new_pin_mismatches = 0;
 
