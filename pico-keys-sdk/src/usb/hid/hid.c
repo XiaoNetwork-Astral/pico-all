@@ -39,6 +39,8 @@ uint8_t (*get_version_major)(void) = NULL;
 uint8_t (*get_version_minor)(void) = NULL;
 
 #define CTAPHID_KEEPALIVE_CANCEL_STATUS 0x2D
+static bool hid_cbor_active = false;
+static bool hid_cancel_pending = false;
 
 static usb_buffer_t *hid_rx = NULL, *hid_tx = NULL;
 
@@ -363,6 +365,21 @@ uint16_t *get_send_buffer_size(uint8_t itf) {
 int driver_process_usb_packet_hid(uint16_t read) {
     int apdu_sent = 0;
     if (read == HID_RPT_SIZE) {
+        CTAPHID_FRAME *incoming = (CTAPHID_FRAME *)(hid_rx[ITF_HID_CTAP].buffer + hid_rx[ITF_HID_CTAP].r_ptr);
+        // CANCEL has no response of its own. Let the worker finish before
+        // completing the original CBOR request or reusing its response buffer.
+        if (FRAME_TYPE(incoming) == TYPE_INIT && incoming->init.cmd == CTAPHID_CANCEL) {
+            if (MSG_LEN(incoming) == 0 && hid_cbor_active &&
+                last_cmd == CTAPHID_CBOR && incoming->cid == last_req.cid) {
+                hid_cancel_pending = true;
+                cancel_button = true;
+            }
+            hid_rx[ITF_HID_CTAP].r_ptr += HID_RPT_SIZE;
+            if (hid_rx[ITF_HID_CTAP].r_ptr >= hid_rx[ITF_HID_CTAP].w_ptr) {
+                hid_rx[ITF_HID_CTAP].r_ptr = hid_rx[ITF_HID_CTAP].w_ptr = 0;
+            }
+            return 0;
+        }
         driver_init_hid();
 
         hid_rx[ITF_HID_CTAP].r_ptr += HID_RPT_SIZE;
@@ -382,28 +399,6 @@ int driver_process_usb_packet_hid(uint16_t read) {
         if (board_millis() < lock && ctap_req->cid != lock_cid &&
             !(ctap_req->cid == CID_BROADCAST && ctap_req->init.cmd == CTAPHID_INIT)) {
             return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
-        }
-        if (FRAME_TYPE(ctap_req) == TYPE_INIT && ctap_req->init.cmd == CTAPHID_CANCEL) {
-            bool active_transaction = is_busy();
-            msg_packet.len = msg_packet.current_len = 0;
-            last_packet_time = 0;
-            cancel_button = true;
-            res_APDU_size = 0;
-            hid_tx[ITF_HID_CTAP].r_ptr = hid_tx[ITF_HID_CTAP].w_ptr = 0;
-            send_buffer_size[ITF_HID_CTAP] = 0;
-            if (active_transaction && last_cmd == CTAPHID_CBOR) {
-                finished_data_size = 0;
-                apdu.sw = 0;
-                apdu.rlen = 0;
-                memset((uint8_t *)ctap_resp, 0, sizeof(CTAPHID_FRAME));
-                ctap_resp->cid = ctap_req->cid;
-                ctap_resp->init.cmd = CTAPHID_CBOR;
-                ctap_resp->init.bcntl = 1;
-                ctap_resp->init.data[0] = CTAPHID_KEEPALIVE_CANCEL_STATUS;
-                hid_write(64);
-                timeout_stop();
-            }
-            return 0;
         }
         if (FRAME_TYPE(ctap_req) == TYPE_INIT) {
             if (MSG_LEN(ctap_req) > CTAP_MAX_PACKET_SIZE) {
@@ -610,6 +605,7 @@ int driver_process_usb_packet_hid(uint16_t read) {
             }
             else if (apdu_sent == 2) {
                 card_start(ITF_HID, cbor_thread);
+                hid_cbor_active = true;
             }
             usb_send_event(EV_CMD_AVAILABLE);
         }
@@ -638,6 +634,15 @@ static void send_keepalive(void) {
 }
 
 void driver_exec_finished_hid(uint16_t size_next) {
+    if (hid_cancel_pending) {
+        ctap_resp = (CTAPHID_FRAME *)hid_tx[ITF_HID_CTAP].buffer;
+        ctap_resp->init.data[0] = CTAPHID_KEEPALIVE_CANCEL_STATUS;
+        size_next = 1;
+        apdu.sw = 0;
+        hid_cancel_pending = false;
+        cancel_button = false;
+    }
+    hid_cbor_active = false;
     if (size_next > 0) {
         if (thread_type == 2 && apdu.sw != 0) {
             ctap_error(apdu.sw & 0xff);
