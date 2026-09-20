@@ -231,16 +231,7 @@ enum
   VENDOR_REQUEST_WEBUSB = 1,
   VENDOR_REQUEST_MICROSOFT = 2
 };
-#define URL  "www.picokeys.com"
 static bool web_serial_connected = false;
-
-const tusb_desc_webusb_url_t desc_url =
-{
-  .bLength         = 3 + sizeof(URL) - 1,
-  .bDescriptorType = 3, // WEBUSB URL type
-  .bScheme         = 1, // 0: http, 1: https
-  .url             = URL
-};
 
 uint8_t desc_ms_os_20[] = {
   // Set header: length, type, windows version, total length
@@ -287,7 +278,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
         case TUSB_REQ_TYPE_VENDOR:
             switch (request->bRequest) {
                 case VENDOR_REQUEST_WEBUSB:
-                    return tud_control_xfer(rhport, request, (void*)(uintptr_t) &desc_url, desc_url.bLength);
+                    return false; // No WebUSB landing-page URL is advertised.
 
                 case VENDOR_REQUEST_MICROSOFT:
                     if (request->wIndex == 7) {
@@ -327,8 +318,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 uint8_t const desc_bos[] = {
     // total length, number of device caps
     TUD_BOS_DESCRIPTOR(BOS_TOTAL_LEN, 2),
-    // Vendor Code, iLandingPage
-    TUD_BOS_WEBUSB_DESCRIPTOR(VENDOR_REQUEST_WEBUSB, 1),
+    // Keep WebUSB available without a browser connection notification.
+    TUD_BOS_WEBUSB_DESCRIPTOR(VENDOR_REQUEST_WEBUSB, 0),
     // Microsoft OS 2.0 descriptor
     TUD_BOS_MS_OS_20_DESCRIPTOR(MS_OS_20_DESC_LEN, VENDOR_REQUEST_MICROSOFT)
 };

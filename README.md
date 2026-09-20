@@ -2,7 +2,7 @@
 
 面向 Waveshare RP2350-One 的 FIDO2/U2F、OpenPGP/PIV 与 SmartCard-HSM 组合固件
 
-当前已通过固件编译与主机端存储、应用切换测试；尚未完成板上协议验证
+当前已通过主机端存储、应用切换测试及 RP2350-One 首轮上板验证；完整客户端兼容性仍待验证
 
 ## 构建
 
@@ -24,6 +24,8 @@ picotool info -a build/pico_all_signed.uf2
 
 ## 验证
 
+Windows 上已验证 USB 枚举、FIDO2 驻留凭据注册与认证、OpenPGP 和 HSM 的 P-256 密钥生成与签名，以及重启和更新固件后的密钥保存；FIDO 注册已验证实体按键确认；PIV 目前仅验证应用选择
+
 Linux 主机上可运行存储与应用切换回归测试
 
 ```sh
@@ -38,6 +40,6 @@ ctest --test-dir build/tests --output-on-failure
 - 当前开发固件使用无硬件 OTP 模式；启动不写入、迁移密钥或设置页面权限，管理命令也不支持启用 Secure Boot / Secure Lock
 - 无 OTP 后备路径缺少硬件随机根密钥的保护；先用于开发测试，后续启用硬件密钥时需处理数据迁移或重新初始化
 - 不可逆的 OTP 初始化留到开发测试完成后实现；Secure Boot 与 Secure Lock 留待 Pico Forge 专项维护，固件签名本身不会启用这些功能
-- 默认 USB ID 为开发用途的 `FEFF:FCFD`；客户端及驱动适配仍需板上验证
+- 默认 USB ID 为开发用途的 `FEFF:FCFD`；Windows FIDO 与 CCID 枚举已验证，真实应用兼容性仍需继续测试
 
 源码来自 [Pico FIDO](https://github.com/polhenarejos/pico-fido)、[Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp)、[Pico HSM](https://github.com/polhenarejos/pico-hsm) 与 [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk)；精确版本见 `upstream.json`，许可证见 `LICENSE`
