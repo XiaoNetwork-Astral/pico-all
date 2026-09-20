@@ -904,3 +904,23 @@ void phymarker_write(void) {
 }
 
 #endif
+
+#ifdef PICO_RP2350
+/* Startup-only preparation: no cached writes or other core may be active. */
+bool flash_storage_erase_before_apps(void) {
+    extern uintptr_t end_flash;
+    extern char __flash_binary_end;
+    uintptr_t start = start_data_pool, end = end_flash;
+    if (start < (uintptr_t)&__flash_binary_end || start >= end ||
+        end > XIP_BASE + FLASH_SIZE_BYTES || (start & (FLASH_SECTOR_SIZE-1)) ||
+        (end & (FLASH_SECTOR_SIZE-1))) return false;
+    for (uintptr_t address = start; address < end; address += FLASH_SECTOR_SIZE) {
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_erase(address - XIP_BASE, FLASH_SECTOR_SIZE);
+        restore_interrupts(irq);
+        for (size_t i = 0; i < FLASH_SECTOR_SIZE; ++i)
+            if (*(const volatile uint8_t *)(address+i) != 0xff) return false;
+    }
+    return true;
+}
+#endif

@@ -32,7 +32,7 @@ add_compile_definitions(ENABLE_OATH_APP=1 ENABLE_OTP_APP=1 ENABLE_POWER_ON_RESET
 include(pico-keys-sdk/picokeys_sdk_import.cmake)
 # picokeys_sdk carries its sources via INTERFACE; do not compile them twice.
 target_link_libraries(pico_all PRIVATE picokeys_sdk)
-target_sources(pico_all PRIVATE src/integration.c src/app_registry.c)
+target_sources(pico_all PRIVATE src/integration.c src/app_registry.c pico-keys-sdk/src/otp/otp_root.c)
 target_include_directories(pico_all PRIVATE ${INCLUDES})
 foreach(component IN ITEMS fido openpgp hsm)
     file(GLOB component_sources CONFIGURE_DEPENDS src/${component}/*.c)

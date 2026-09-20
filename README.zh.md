@@ -4,7 +4,7 @@
 
 面向 Waveshare RP2350-One 的 FIDO2/U2F、OpenPGP/PIV、SmartCard-HSM 三合一固件
 
-当前为开发版本，未启用硬件 OTP 初始化与 Secure Boot / Secure Lock；暂勿用于重要凭据
+安全配置已实现并通过离线 OTP 模型测试；不可逆的实机验证仍待完成。
 
 ## 构建
 
@@ -25,12 +25,16 @@ cmake --build build
 
 ## 固件工具
 
-需要 Python 3.10+，并将 [picotool](https://github.com/raspberrypi/picotool) 加入 PATH。英文菜单提供板内信息、本地签名和校验刷写；操作开发板时需进入 BOOTSEL 模式。
+需要 Python 3.10+，并将 [picotool](https://github.com/raspberrypi/picotool) 加入 PATH。一个英文菜单提供板内信息、本地签名、校验刷写和安全配置。固件与熔丝操作使用 BOOTSEL 模式；清空准备和启动检查使用正常模式。
 
 ```sh
 python -m pip install -r requirements.txt
 python firmware.py
 ```
+
+安全配置顺序：**登记密钥 → 加固 → 清空准备 → 启用 → 启动检查 → 锁定**。同一个菜单会提示每一步；CLI 默认只预览，提供 `--apply` 后才进入确认。不可逆阶段之间需要彻底断电并测试。
+
+签名启动和调试保护生效后，固件才会自动初始化 OTP 设备根。首次配置要求凭据区为空；清空准备会在板上按键确认后删除应用凭据、PIN 和设置。已有 OTP 根在更新后保留。最终锁定会关闭密钥轮换，务必离线备份签名密钥；仍可通过 BOOTSEL 更新签名固件。
 
 ## 许可证
 

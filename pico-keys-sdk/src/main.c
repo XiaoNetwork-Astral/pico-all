@@ -116,9 +116,9 @@ int main(void) {
 
     random_init();
 
-    otp_init();
-
     low_flash_init();
+
+    otp_init();
 
     file_scan_flash();
 

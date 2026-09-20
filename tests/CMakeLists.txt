@@ -81,3 +81,20 @@ target_compile_options(u2f_keys_test PRIVATE -ffunction-sections -fdata-sections
 target_link_options(u2f_keys_test PRIVATE -Wl,--gc-sections)
 add_test(NAME u2f_keys_and_commands COMMAND u2f_keys_test)
 set_tests_properties(u2f_keys_and_commands PROPERTIES TIMEOUT 30)
+
+add_executable(otp_root_test otp_root_test.c ../pico-keys-sdk/src/otp/otp_root.c)
+target_include_directories(otp_root_test PRIVATE ../pico-keys-sdk/src/otp)
+target_link_libraries(otp_root_test PRIVATE u2f_test_crypto)
+target_compile_options(otp_root_test PRIVATE -UNDEBUG)
+add_test(NAME otp_root_power_cut_model COMMAND otp_root_test)
+set_tests_properties(otp_root_power_cut_model PROPERTIES TIMEOUT 15)
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME security_management_protocol
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover -s tests -p security_protocol_test.py)
+    set_tests_properties(security_management_protocol PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        ENVIRONMENT "OTP_SIM_COMMAND=[\"$<TARGET_FILE:otp_root_test>\"]"
+        TIMEOUT 120)
+endif()

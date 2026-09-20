@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware for the Waveshare RP2350-One
 
-Development build: hardware OTP provisioning and Secure Boot / Secure Lock are disabled; do not use it for important credentials yet
+Security provisioning is implemented and tested with an offline OTP model; irreversible on-board validation is still pending.
 
 ## Build
 
@@ -25,12 +25,16 @@ New U2F credentials work with a button press after reconnecting, independently o
 
 ## Firmware tool
 
-Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. English menu: board info, local signing and verified flashing. Connect in BOOTSEL mode for board operations.
+Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. One English menu: board info, local signing, verified flashing and security configuration. Use BOOTSEL for firmware and fuse operations; Prepare and Prove use normal mode.
 
 ```sh
 python -m pip install -r requirements.txt
 python firmware.py
 ```
+
+Security stages: **Load key → Harden → Prepare → Enable → Prove → Lock**. The menu explains each step; CLI security commands preview changes unless `--apply` is supplied. Power-cycle and test between irreversible stages.
+
+OTP device roots initialize automatically only after signed boot and debug protection are active. First-time setup requires empty credential storage; Prepare explicitly clears credentials, PINs and settings with a board-button confirmation. Existing roots are retained across updates. Lock disables key rotation; keep the signing key backed up offline. Signed BOOTSEL updates remain available.
 
 ## License
 

@@ -17,83 +17,130 @@
 
 #include "picokeys.h"
 #include "otp_platform.h"
+#include "otp_root.h"
+#include "random.h"
+#include "flash.h"
+#include "pico/bootrom.h"
+#include "hardware/structs/otp.h"
+#include "hardware/structs/watchdog.h"
+#include "hardware/watchdog.h"
+#include "hardware/regs/otp_data.h"
+#include "mbedtls/sha256.h"
 #include <stdalign.h>
 
-#include "hardware/regs/addressmap.h"
-#include "hardware/regs/otp_data.h"
+static alignas(4) uint8_t root_keys[64];
+static int root_state;
+static uint8_t root_page = 0xff;
 
-// Development firmware only reads OTP status. Provisioning and security
-// activation will be implemented separately after application validation.
-
-static const uint8_t* otp_buffer(uint16_t row) {
-    volatile uint32_t *p = ((uint32_t *)(OTP_DATA_BASE + (row*2)));
-    return (const uint8_t *)p;
+static int read_raw(uint16_t row, uint32_t *value) {
+    otp_cmd_t cmd = { .flags = row };
+    return rom_func_otp_access((uint8_t *)value, 4, cmd);
 }
-
-static const uint8_t* otp_buffer_raw(uint16_t row) {
-    volatile uint32_t *p = ((uint32_t *)(OTP_DATA_RAW_BASE + (row*4)));
-    return (const uint8_t *)p;
+static int read_ecc(uint16_t row, uint8_t *data, size_t size) {
+    otp_cmd_t cmd = { .flags = row | OTP_CMD_ECC_BITS };
+    return rom_func_otp_access(data, size, cmd);
 }
+static int write_raw(uint16_t row, uint32_t value) {
+    otp_cmd_t cmd = { .flags = row | OTP_CMD_WRITE_BITS };
+    int result = rom_func_otp_access((uint8_t *)&value, 4, cmd);
+    /* Hard locks latch at reset. Apply NS denial immediately as well. */
+    if (!result && row >= 0xf81 && (row & 1)) {
+        unsigned page = (row - 0xf81) / 2;
+        otp_hw->sw_lock[page] |= (value & 0x0c);
+    }
+    return result;
+}
+static int write_ecc(uint16_t row, const uint8_t *data, size_t size) {
+    otp_cmd_t cmd = { .flags = row | OTP_CMD_WRITE_BITS | OTP_CMD_ECC_BITS };
+    return rom_func_otp_access((uint8_t *)data, size, cmd);
+}
+static int entropy(uint8_t *data, size_t size) {
+    return random_fill_buffer(BYTE_ARRAY(data, size));
+}
+static int hash(const uint8_t *data, size_t size, uint8_t digest[32]) {
+    return mbedtls_sha256(data, size, digest, 0);
+}
+static const otp_root_hal_t root_hal = {read_raw, read_ecc, write_raw, write_ecc, entropy, hash};
 
+static bool flags1(uint32_t *flags) {
+    uint32_t a, b, c;
+    if (read_raw(OTP_DATA_BOOT_FLAGS1_ROW, &a) ||
+        read_raw(OTP_DATA_BOOT_FLAGS1_ROW + 1, &b) ||
+        read_raw(OTP_DATA_BOOT_FLAGS1_ROW + 2, &c)) return false;
+    *flags = (a & b) | (a & c) | (b & c);
+    return true;
+}
+/* Legacy three-byte status: report enforcement independently of a particular author/key. */
 bool otp_platform_is_secure_boot_enabled(uint8_t *bootkey) {
-    const uint8_t *crit1 = otp_buffer(OTP_DATA_CRIT1_ROW);
-    if ((crit1[0] & (1 << OTP_DATA_CRIT1_SECURE_BOOT_ENABLE_LSB)) == 0) {
-        return false;
-    }
-    alignas(2) uint8_t BOOTKEY[32] = {
-        0xE1, 0xD1, 0x6B, 0xA7, 0x64, 0xAB, 0xD7, 0x12,
-        0xD4, 0xEF, 0x6E, 0x3E, 0xDD, 0x74, 0x4E, 0xD5,
-        0x63, 0x8C, 0x26, 0x0B, 0x77, 0x1C, 0xF9, 0x81,
-        0x51, 0x11, 0x0B, 0xAF, 0xAC, 0x9B, 0xC8, 0x71
-    };
-    uint8_t bootkey_idx = 0;
-    for (; bootkey_idx < 6; bootkey_idx++) {
-        const uint8_t *bootkey_row = otp_buffer(OTP_DATA_BOOTKEY0_0_ROW + 0x10 * bootkey_idx);
-        if (memcmp(bootkey_row, BOOTKEY, sizeof(BOOTKEY)) == 0) {
-            break;
-        }
-    }
-    if (bootkey_idx == 6) {
-        return false;
-    }
-    const uint8_t *boot_flags1 = otp_buffer(OTP_DATA_BOOT_FLAGS1_ROW);
-    if ((boot_flags1[0] & (1 << (bootkey_idx + OTP_DATA_BOOT_FLAGS1_KEY_VALID_LSB))) == 0) {
-        return false;
-    }
-    if (bootkey) {
-        *bootkey = bootkey_idx;
+    uint32_t flags;
+    if (bootkey) *bootkey = 0xff;
+    if (!(otp_hw->critical & OTP_DATA_CRIT1_SECURE_BOOT_ENABLE_BITS)) return false;
+    if (flags1(&flags)) {
+        unsigned trusted = (flags & 15) & ~(flags >> 8);
+        for (unsigned i = 0; i < 4; ++i)
+            if (trusted == (1u << i) && bootkey) *bootkey = i;
     }
     return true;
 }
-
 bool otp_platform_is_secure_boot_locked(void) {
-    uint8_t bootkey_idx = 0xFF;
-    if (otp_platform_is_secure_boot_enabled(&bootkey_idx) == false) {
-        return false;
-    }
-    const uint8_t *boot_flags1 = otp_buffer_raw(OTP_DATA_BOOT_FLAGS1_ROW);
-    if ((boot_flags1[1] & ((OTP_DATA_BOOT_FLAGS1_KEY_INVALID_BITS >> OTP_DATA_BOOT_FLAGS1_KEY_INVALID_LSB) & (~(1 << bootkey_idx)))) !=
-        ((OTP_DATA_BOOT_FLAGS1_KEY_INVALID_BITS >> OTP_DATA_BOOT_FLAGS1_KEY_INVALID_LSB) & (~(1 << bootkey_idx)))) {
-        return false;
-    }
-    const uint8_t *crit1 = otp_buffer_raw(OTP_DATA_CRIT1_ROW);
-    if ((crit1[0] & (1 << OTP_DATA_CRIT1_DEBUG_DISABLE_LSB)) == 0
-        || (crit1[0] & (1 << OTP_DATA_CRIT1_GLITCH_DETECTOR_ENABLE_LSB)) == 0
-        || ((crit1[0] & (3 << OTP_DATA_CRIT1_GLITCH_DETECTOR_SENS_LSB)) != (3 << OTP_DATA_CRIT1_GLITCH_DETECTOR_SENS_LSB))) {
-        return false;
-    }
-    return bootkey_idx != 0xFF;
+    uint32_t flags, lock1, lock2;
+    if ((otp_hw->critical & 0x75u) != 0x75u || !flags1(&flags) ||
+        read_raw(0xf83, &lock1) || read_raw(0xf85, &lock2)) return false;
+    unsigned trusted = (flags & 15) & ~(flags >> 8);
+    bool single = trusted && !(trusted & (trusted - 1));
+    lock1 = ((lock1 & (lock1 >> 8)) | (lock1 & (lock1 >> 16)) | ((lock1 >> 8) & (lock1 >> 16))) & 255;
+    lock2 = ((lock2 & (lock2 >> 8)) | (lock2 & (lock2 >> 16)) | ((lock2 >> 8) & (lock2 >> 16))) & 255;
+    return single && ((flags >> 8) & 15) == (15u ^ trusted) && lock1 == 0x15 && lock2 == 0x15;
 }
-
+/* Security configuration uses the staged BOOTSEL tool, never the old one-shot APDU. */
 int otp_platform_enable_secure_boot(uint8_t bootkey, bool secure_lock) {
-    (void)bootkey;
-    (void)secure_lock;
+    (void)bootkey; (void)secure_lock;
     return PICOKEYS_WRONG_DATA;
 }
+/* Public state only. Keys and raw secret-page data are never returned. */
+void otp_rp2350_forget(void) {
+    volatile uint8_t *p = root_keys;
+    for (unsigned i = 0; i < sizeof(root_keys); ++i) p[i] = 0;
+}
+int otp_rp2350_root_status(void) { return root_state; }
+uint8_t otp_rp2350_root_page(void) { return root_page; }
+uint32_t otp_rp2350_critical(void) { return otp_hw->critical; }
 
-void otp_platform_init(const uint8_t **otp_key_1_out, const uint8_t **otp_key_2_out) {
-    // Deliberately use the SDK's no-OTP paths throughout development, even if
-    // this board already has OTP keys. Never migrate, provision or lock pages.
-    *otp_key_1_out = NULL;
-    *otp_key_2_out = NULL;
+#define PREPARE_MAGIC 0x50414f54u
+int otp_rp2350_prepare(void) {
+    if (!otp_root_may_prepare(root_state, otp_hw->critical)) return PICOKEYS_WRONG_DATA;
+    watchdog_hw->scratch[0] = PREPARE_MAGIC;
+    watchdog_hw->scratch[1] = ~PREPARE_MAGIC;
+    watchdog_reboot(0, 0, 100);
+    return PICOKEYS_OK;
+}
+
+void otp_platform_init(const uint8_t **key1, const uint8_t **key2) {
+    *key1 = NULL; *key2 = NULL;
+    boot_info_t boot;
+    bool normal = rom_get_boot_info(&boot) &&
+                  (boot.boot_type == BOOT_TYPE_NORMAL || boot.boot_type == BOOT_TYPE_FLASH_UPDATE);
+    bool protected_boot = normal && (otp_hw->critical & 5u) == 5u;
+    root_state = otp_root_open(&root_hal, protected_boot, flash_storage_blank(), root_keys, &root_page);
+    bool prepare = watchdog_caused_reboot() && watchdog_hw->scratch[0] == PREPARE_MAGIC &&
+                   watchdog_hw->scratch[1] == ~PREPARE_MAGIC;
+    watchdog_hw->scratch[0] = 0; watchdog_hw->scratch[1] = 0;
+    if (prepare && otp_root_may_prepare(root_state, otp_hw->critical)) {
+        extern bool flash_storage_erase_before_apps(void);
+        /* Only an explicit, physically confirmed request reaches here. Core1,
+         * USB, file scanning and journal recovery have not started yet. */
+        watchdog_disable();
+        (void)flash_storage_erase_before_apps();
+        reset_usb_boot(0, 0);
+        while (true) tight_loop_contents();
+    }
+    if (root_state == OTP_ROOT_READY) {
+        otp_hw->sw_lock[root_page] |= 0x0d;
+        *key1 = root_keys; *key2 = root_keys + 32;
+    } else if (root_state != OTP_ROOT_OFF || (otp_hw->critical & 1u)) {
+        /* Do not run applications with a different root after any security failure.
+         * BOOTSEL remains available for a correctly signed recovery/update. */
+        reset_usb_boot(0, 0);
+        while (true) tight_loop_contents();
+    }
 }

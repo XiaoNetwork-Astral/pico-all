@@ -26,6 +26,9 @@
 #include "apdu.h"
 #include "picokeys_version.h"
 #include "otp.h"
+#ifdef PICO_RP2350
+#include "otp_root.h"
+#endif
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
@@ -418,6 +421,16 @@ static int cmd_read(void) {
         res_APDU[res_APDU_size++] = locked ? 0x1 : 0x0;
         res_APDU[res_APDU_size++] = bootkey;
     }
+#ifdef PICO_RP2350
+    else if (p1 == 0x6) { // Pico All OTP root / latched hardware security status v1
+        extern int otp_rp2350_root_status(void);
+        extern uint8_t otp_rp2350_root_page(void);
+        extern uint32_t otp_rp2350_critical(void);
+        otp_root_status_encode(otp_rp2350_root_status(), otp_rp2350_root_page(),
+                               otp_rp2350_critical(), res_APDU);
+        res_APDU_size = 7;
+    }
+#endif
     else if (p1 == 0x4) { // GET TIME
         if (p2 != 0x1 && p2 != 0x2) {
             return SW_INCORRECT_P1P2();
@@ -476,6 +489,18 @@ static int cmd_secure(void) {
         return SW_WRONG_LENGTH();
     }
 
+#ifdef PICO_RP2350
+    if (P1(apdu) == 0 && P2(apdu) == 2) {
+        extern int otp_rp2350_root_status(void);
+        extern uint32_t otp_rp2350_critical(void);
+        extern int otp_rp2350_prepare(void);
+        if (!otp_root_may_prepare(otp_rp2350_root_status(), otp_rp2350_critical()) ||
+            !rescue_require_user_presence()) return SW_CONDITIONS_NOT_SATISFIED();
+        return otp_rp2350_prepare() == PICOKEYS_OK ? SW_OK() : SW_EXEC_ERROR();
+    }
+    // The old one-shot enable/lock command is intentionally unavailable.
+    return SW_INCORRECT_P1P2();
+#endif
     uint8_t bootkey = P1(apdu);
     if (bootkey >= 6) {
         return SW_INCORRECT_P1P2();

@@ -209,6 +209,10 @@ static void __attribute__((noreturn, noinline)) usb_secure_reboot_now(void) {
 
     (void) save_and_disable_interrupts();
     multicore_reset_core1();
+#ifdef PICO_RP2350
+    extern void otp_rp2350_forget(void);
+    otp_rp2350_forget();
+#endif
 
     if (stack1_end > stack1_start) {
         secure_bzero((void *) stack1_start, stack1_end - stack1_start);

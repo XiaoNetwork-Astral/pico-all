@@ -67,6 +67,13 @@ void flash_set_bounds(uintptr_t start, uintptr_t end) {
     last_base = end_data_pool;
 }
 
+bool flash_storage_blank(void) {
+    if (start_data_pool >= end_flash) return false;
+    for (uintptr_t p = start_data_pool; p < end_flash; ++p)
+        if (flash_read_uint8(p) != 0xff) return false;
+    return true;
+}
+
 static size_t flash_record_length_size(uintptr_t base) {
     uintptr_t length_addr = base + 2 * sizeof(uintptr_t) + FILE_RECORD_ID_SIZE;
     return flash_read_uint16(length_addr) == FLASH_FILE_EXTENDED_LENGTH ? FLASH_FILE_EXTENDED_LENGTH_SIZE : FLASH_FILE_LEGACY_LENGTH_SIZE;

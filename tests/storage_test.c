@@ -25,6 +25,7 @@ int flash_program_uintptr(uintptr_t a, uintptr_t v) { return flash_program_block
 uint16_t flash_read_uint16(uintptr_t a) { uint16_t v; memcpy(&v, (void *)a, sizeof(v)); return v; }
 uint32_t flash_read_uint32(uintptr_t a) { uint32_t v; memcpy(&v, (void *)a, sizeof(v)); return v; }
 uintptr_t flash_read_uintptr(uintptr_t a) { uintptr_t v; memcpy(&v, (void *)a, sizeof(v)); return v; }
+uint8_t flash_read_uint8(uintptr_t a) { return *(uint8_t *)a; }
 uint8_t *flash_read(uintptr_t a) { return (uint8_t *)a; }
 int flash_read_block(uintptr_t a, byte_array_t d) { memcpy(d.data, (void *)a, d.len); return PICOKEYS_OK; }
 void low_flash_commit(void) {}
@@ -101,7 +102,12 @@ int main(void) {
     }
     file_namespace_select(0);
     flash_set_bounds((uintptr_t)memory, (uintptr_t)memory + sizeof(memory));
+    assert(flash_storage_blank());
+    memory[sizeof(memory)-1] = 0;
+    assert(!flash_storage_blank()); // Even an unreachable old record prevents root replacement.
+    memory[sizeof(memory)-1] = 0xff;
     file_scan_flash();
+    assert(!flash_storage_blank()); // File scan writes defaults: check must precede it.
     for (unsigned ns = 1; ns < FILE_NAMESPACE_COUNT; ++ns) {
         file_namespace_select(ns);
         uint8_t value = (uint8_t)ns;
