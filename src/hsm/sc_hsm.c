@@ -286,15 +286,13 @@ bool hsm_wait_button_pressed(void) {
     uint16_t opts = get_device_options();
     bool require_button = opts & HSM_OPT_BOOTSEL_BUTTON;
     if (require_button) {
-        bool previous_force_button_wait = force_button_wait;
-#ifdef FORCE_BUTTON_WAIT
-        force_button_wait = true;
-#endif
-        queue_try_add(&card_to_usb_q, &val);
+        uint32_t timeout_seconds = button_timeout_seconds();
+        if (timeout_seconds == 0) timeout_seconds = 30;
+        val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
+        queue_add_blocking(&card_to_usb_q, &val);
         do{
             queue_remove_blocking(&usb_to_card_q, &val);
         } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT && val != EV_BUTTON_CANCELLED);
-        force_button_wait = previous_force_button_wait;
         return val != EV_BUTTON_PRESSED;
     }
 #endif
