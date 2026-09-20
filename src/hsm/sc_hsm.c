@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "device_identity.h"
 #include <stdio.h>
 #include "picokeys.h"
 #include "serial.h"
@@ -305,9 +306,9 @@ int parse_token_info(const file_t *f, int mode) {
 #ifdef __FOR_CI
     const char *label = "SmartCard-HSM";
 #else
-    const char *label = "Pico-HSM";
+    const char *label = device_product_name();
 #endif
-    const char *manu = "Pol Henarejos";
+    const char *manu = PICO_ALL_MANUFACTURER;
     if (mode == 1) {
         uint8_t *p = res_APDU;
         *p++ = 0x30;
@@ -332,7 +333,7 @@ int parse_ef_dir(const file_t *f, int mode) {
 #ifdef __FOR_CI
     const char *label = "SmartCard-HSM";
 #else
-    const char *label = "Pico-HSM";
+    const char *label = device_product_name();
 #endif
     if (mode == 1) {
         uint8_t *p = res_APDU;

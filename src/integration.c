@@ -3,6 +3,7 @@
 #include "file.h"
 #include "apdu.h"
 #include "flash.h"
+#include "led/led.h"
 
 uint8_t PICO_PRODUCT = 0; // Custom combined firmware; no claim to be an upstream product
 uint8_t PICO_VERSION_MAJOR = 0;
@@ -40,3 +41,12 @@ int register_app_for_openpgp(int (*select)(app_t *, uint8_t), const uint8_t *aid
 int register_app_for_hsm(int (*select)(app_t *, uint8_t), const uint8_t *aid) {
     return register_scoped(select, aid, 3);
 }
+
+// Physical USB state is independent of whether a smart-card session is open.
+void tud_mount_cb(void) { led_set_mode(MODE_MOUNTED); }
+void tud_umount_cb(void) { led_set_mode(MODE_NOT_MOUNTED); }
+void tud_suspend_cb(bool remote_wakeup_en) {
+    (void)remote_wakeup_en;
+    led_set_mode(MODE_SUSPENDED);
+}
+void tud_resume_cb(void) { led_set_mode(MODE_MOUNTED); }

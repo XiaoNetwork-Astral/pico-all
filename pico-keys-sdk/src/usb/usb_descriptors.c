@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "device_identity.h"
 #include "picokeys.h"
 #include "tusb.h"
 #ifdef ESP_PLATFORM
@@ -338,18 +339,18 @@ uint8_t const *tud_descriptor_bos_cb(void) {
 char *string_desc_itf[5] = {0};
 char const *string_desc_arr [] = {
     (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-    "Pol Henarejos",                     // 1: Manufacturer
-    "Pico All",                       // 2: Product
+    PICO_ALL_MANUFACTURER,                     // 1: Manufacturer
+    PICO_ALL_PRODUCT,                       // 2: Product
     "11223344",                      // 3: Serials, should use chip ID
     "MAC"                   // 4: MAC address string, handled separately
-    , "HID Interface"
-    , "HID Keyboard Interface"
+    , "FIDO"
+    , "OTP Keyboard"
 #ifdef USB_ITF_HID
-    , "CCID OTP FIDO Interface"
+    , "Smart Card"
 #else
-    , "CCID Interface"
+    , "Smart Card"
 #endif
-    , "WebCCID Interface"
+    , "WebUSB"
     , "Network Interface"
 };
 

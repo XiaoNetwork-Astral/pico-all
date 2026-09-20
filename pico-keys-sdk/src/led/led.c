@@ -20,13 +20,11 @@
 #include "pico_time.h"
 #if defined(ESP_PLATFORM)
 #include "driver/gpio.h"
-#elif defined(ENABLE_EMULATION)
-#include "emulation.h"
 #endif
 
 led_driver_t *led_driver = NULL;
 
-static uint32_t led_mode = MODE_NOT_MOUNTED;
+static volatile uint32_t led_mode = MODE_NOT_MOUNTED;
 
 static volatile bool blink_pending = false;
 static volatile uint8_t blink_count = 0;
@@ -43,7 +41,7 @@ uint32_t led_get_mode(void) {
 }
 
 void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t off_ms) {
-    if (count == 0 || on_ms == 0 || off_ms == 0) {
+    if (count == 0 || color > LED_COLOR_WHITE || on_ms == 0 || off_ms == 0 || on_ms > 4095 || off_ms > 4095) {
         return;
     }
     blink_count = count;
@@ -53,93 +51,63 @@ void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t of
     blink_pending = true;
 }
 
-void led_blinking_task(void) {
-#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
-    static uint32_t start_ms = 0;
-    static uint32_t stop_ms = 0;
-    static uint32_t last_led_update_ms = 0;
-    static uint8_t led_state = false;
-    static bool blink_active = false;
-    static bool blink_on = false;
-    static uint8_t blinks_remaining = 0;
-    static uint8_t active_blink_color = LED_COLOR_GREEN;
-    static uint32_t active_blink_on_ms = 0;
-    static uint32_t active_blink_off_ms = 0;
-    static uint32_t blink_deadline_ms = 0;
+static void led_render(uint8_t color, uint32_t brightness, bool on) {
+    static uint32_t last_frame = UINT32_MAX;
+    if (!led_driver) return;
+    uint32_t frame = on ? (brightness << 8) | color : 0;
+    if (frame != last_frame) {
+        led_driver->set_color(on ? color : LED_COLOR_OFF, on ? brightness : 0, on ? 1.0f : 0.0f);
+        last_frame = frame;
+    }
+}
 
+void led_blinking_task(void) {
+    static uint32_t previous_mode = UINT32_MAX;
+    static uint32_t mode_started = 0;
+    static bool blink_active = false;
+    static uint32_t blink_started, active_on, active_off;
+    static uint8_t active_count, active_color;
     uint32_t now = board_millis();
+    uint32_t mode = led_mode;
+    if (mode != previous_mode) {
+        previous_mode = mode;
+        mode_started = now;
+    }
+    // Presence prompts and USB disconnect/suspend take priority over notifications.
+    if (mode == MODE_BUTTON || mode == MODE_NOT_MOUNTED || mode == MODE_SUSPENDED) {
+        blink_pending = false;
+        blink_active = false;
+    }
     if (blink_pending) {
         blink_pending = false;
+        blink_started = now;
+        active_count = blink_count;
+        active_color = blink_color;
+        active_on = blink_on_ms;
+        active_off = blink_off_ms;
         blink_active = true;
-        blink_on = true;
-        blinks_remaining = blink_count;
-        active_blink_color = blink_color;
-        active_blink_on_ms = blink_on_ms;
-        active_blink_off_ms = blink_off_ms;
-        blink_deadline_ms = now + active_blink_on_ms;
-        led_driver->set_color(active_blink_color, MAX_BTNESS, 1.0f);
-        return;
     }
     if (blink_active) {
-        if (now < blink_deadline_ms) {
+        uint32_t elapsed = now - blink_started;
+        uint32_t cycle = active_on + active_off;
+        if (elapsed / cycle < active_count) {
+            led_render(active_color, MAX_BTNESS, elapsed % cycle < active_on);
             return;
         }
-        if (blink_on) {
-            blink_on = false;
-            blink_deadline_ms = now + active_blink_off_ms;
-            led_driver->set_color(LED_COLOR_OFF, 0, 0.0f);
-            return;
-        }
-        if (--blinks_remaining == 0) {
-            blink_active = false;
-        }
-        else {
-            blink_on = true;
-            blink_deadline_ms = now + active_blink_on_ms;
-            led_driver->set_color(active_blink_color, MAX_BTNESS, 1.0f);
-            return;
-        }
+        blink_active = false;
     }
-    uint8_t state = led_state;
-#ifdef PICO_DEFAULT_LED_PIN_INVERTED
-    state = !state;
-#endif
-    uint32_t led_brightness = (led_mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT;
-    uint32_t led_color = (led_mode & LED_COLOR_MASK) >> LED_COLOR_SHIFT;
-    uint32_t led_off = (led_mode & LED_OFF_MASK) >> LED_OFF_SHIFT;
-    uint32_t led_on = (led_mode & LED_ON_MASK) >> LED_ON_SHIFT;
-
-    float progress = 0;
-
-    if (stop_ms > start_ms) {
-        progress = (float)(now - start_ms) / (stop_ms - start_ms);
-    }
-
-    if (!state) {
-        progress = 1. - progress;
-    }
-    if (phy_data.opts & PHY_OPT_LED_STEADY) {
-        progress = 1;
-    }
-
-    // limit the frequency of LED status updates
-    if (now - last_led_update_ms > 2) {
-        led_driver->set_color(led_color, led_brightness, progress);
-        last_led_update_ms = now;
-    }
-
-    if (now >= stop_ms){
-        start_ms = stop_ms;
-        led_state ^= 1; // toggle
-        stop_ms = start_ms + (led_state ? led_on : led_off);
-    }
-#endif
+    // Avoid turning routine, short host polling into visible flicker.
+    if (mode == MODE_PROCESSING && now - mode_started < 150) mode = MODE_MOUNTED;
+    uint32_t on_ms = (mode & LED_ON_MASK) >> LED_ON_SHIFT;
+    uint32_t off_ms = (mode & LED_OFF_MASK) >> LED_OFF_SHIFT;
+    bool on = on_ms != 0 && (off_ms == 0 || (now - mode_started) % (on_ms + off_ms) < on_ms);
+    led_render((mode & LED_COLOR_MASK) >> LED_COLOR_SHIFT,
+               (mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT, on);
 }
 
 void led_off_all(void) {
-#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
-    led_driver->set_color(LED_COLOR_OFF, 0, 0);
-#endif
+    led_set_mode(MODE_ALWAYS_OFF);
+    led_render(LED_COLOR_OFF, 0, false);
 }
 
 extern led_driver_t led_driver_pico;

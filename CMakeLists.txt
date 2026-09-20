@@ -9,6 +9,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(pico_all)
 set(USB_VID 0xFEFF CACHE STRING "USB vendor ID for local development")
 set(USB_PID 0xFCFD CACHE STRING "USB product ID for local development")
+set(PICO_ALL_MANUFACTURER "Pico All" CACHE STRING "USB and token manufacturer")
+set(PICO_ALL_PRODUCT "Pico All" CACHE STRING "Default device and token name")
+foreach(identity IN ITEMS PICO_ALL_MANUFACTURER PICO_ALL_PRODUCT)
+    string(LENGTH "${${identity}}" identity_length)
+    if(identity_length GREATER 31 OR "${${identity}}" MATCHES "[\\\";\r\n]")
+        message(FATAL_ERROR "${identity} must be at most 31 bytes without quotes, backslashes or separators")
+    endif()
+endforeach()
+target_compile_definitions(pico_all PRIVATE
+    PICO_ALL_MANUFACTURER="${PICO_ALL_MANUFACTURER}"
+    PICO_ALL_PRODUCT="${PICO_ALL_PRODUCT}"
+)
 set(USB_ITF_HID 1)
 set(USB_ITF_CCID 1)
 set(USB_ITF_WCID 1)

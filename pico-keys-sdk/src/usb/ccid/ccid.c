@@ -276,7 +276,7 @@ int driver_process_usb_packet_ccid(uint8_t itf, uint16_t rx_read) {
                 ccid_resp_fast[itf]->abRFU1 = 0;
                 ccid_write_fast(itf, CONST_BYTE_ARRAY((const uint8_t *)ccid_resp_fast[itf], 10));
 
-                led_set_mode(MODE_SUSPENDED);
+                led_set_mode(MODE_MOUNTED);
             }
             else if (ccid_header[itf]->bMessageType == CCID_SET_PARAMS ||
                      ccid_header[itf]->bMessageType == CCID_GET_PARAMS ||

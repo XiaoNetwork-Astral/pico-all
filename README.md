@@ -26,13 +26,33 @@ picotool info -a build/pico_all_signed.uf2
 
 Windows 上已验证 USB 枚举、FIDO2 驻留凭据注册与认证、OpenPGP 和 HSM 的 P-256 密钥生成与签名，以及重启和更新固件后的密钥保存；FIDO 注册已验证实体按键确认；PIV 目前仅验证应用选择
 
-Linux 主机上可运行存储与应用切换回归测试
+Linux 主机上可运行存储、应用切换与 LED 状态时序回归测试
 
 ```sh
 cmake -S tests -B build/tests
 cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 ```
+
+## 设备名称与灯光
+
+USB 厂商名称和默认产品名称均为 `Pico All`；可用 CMake 参数 `-DPICO_ALL_MANUFACTURER="Your Name"` 与 `-DPICO_ALL_PRODUCT="Your Key"` 自定义，长度各不超过 31 字节
+
+管理接口设置的设备自定义名称会同时用于 USB 产品名称与 HSM 默认标签；源码版权信息与上游出处保留
+
+RP2350-One 的 RGB 灯使用 GPIO16、WS2812 驱动与 GRB 顺序；物理亮度配置范围为 0–15，旧配置中的超范围值按 15 处理
+
+| 灯光 | 含义 |
+| --- | --- |
+| 低亮绿色常亮 | USB 已就绪，待机 |
+| 蓝色常亮 | 请求处理超过 150 毫秒 |
+| 黄色闪烁，亮灭各 300 毫秒 | 等待按下 BOOT/BOOTSEL 确认 |
+| 绿色短闪 | 按键确认或应用完成提示 |
+| 红色两闪 | 按键确认超时 |
+| 紫色每 2 秒短闪 | USB 尚未就绪或已断开 |
+| 熄灭 | USB 挂起或灯光关闭 |
+
+按键提示优先于完成提示；短暂主机轮询不显示蓝灯，以减少无意义闪烁
 
 ## 刷写前
 

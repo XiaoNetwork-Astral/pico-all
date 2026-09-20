@@ -132,7 +132,7 @@ static void led_driver_color_ws2812(uint8_t color, uint32_t led_brightness, floa
     if (!(phy_data.opts & PHY_OPT_DIMM)) {
         progress = progress >= 0.5 ? 1 : 0;
     }
-    uint32_t led_phy_btness = phy_data.led_brightness_present ? phy_data.led_brightness : MAX_BTNESS;
+    uint32_t led_phy_btness = phy_data.led_brightness_present ? MIN(phy_data.led_brightness, MAX_BTNESS) : MAX_BTNESS;
 
     float brightness = ((float)led_brightness / MAX_BTNESS) * ((float)led_phy_btness / MAX_BTNESS) * progress;
     struct urgb_color pixel_color = urgb_color_table[color];

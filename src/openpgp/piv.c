@@ -347,7 +347,7 @@ void select_piv_aid(void) {
     res_APDU[res_APDU_size++] = 9;
     memcpy(res_APDU + res_APDU_size, "\xA0\x00\x00\x03\x08\x00\x00\x10\x00", 9);
     res_APDU_size += 9;
-    const char *app_label = "Pico Keys PIV";
+    const char *app_label = "PIV";
     res_APDU[res_APDU_size++] = 0x50;
     res_APDU[res_APDU_size++] = strlen(app_label);
     memcpy(res_APDU + res_APDU_size, app_label, strlen(app_label));

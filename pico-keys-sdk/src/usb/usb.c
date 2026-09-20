@@ -248,6 +248,7 @@ void usb_send_event(uint32_t flag) {
 #endif
     queue_add_blocking(&usb_to_card_q, &flag);
     if (flag == EV_CMD_AVAILABLE) {
+        led_set_mode(MODE_PROCESSING);
         timeout_start();
     }
 #ifndef ENABLE_EMULATION
@@ -304,7 +305,7 @@ void card_exit(void) {
             mutex_exit(&mutex);
 #endif
         }
-        led_set_mode(MODE_SUSPENDED);
+        led_set_mode(MODE_MOUNTED);
 #ifdef ESP_PLATFORM
         hcore1 = NULL;
 #endif
