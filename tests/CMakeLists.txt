@@ -50,3 +50,34 @@ target_compile_options(piv_reset_test PRIVATE -ffunction-sections -fdata-section
 target_link_options(piv_reset_test PRIVATE -Wl,--gc-sections)
 add_test(NAME piv_openpgp_reset_isolation COMMAND piv_reset_test)
 set_tests_properties(piv_openpgp_reset_isolation PROPERTIES TIMEOUT 15)
+
+# Use the same vendored crypto implementation, without hardware acceleration.
+set(u2f_crypto_sources
+    aes aesni padlock platform asn1parse asn1write bignum bignum_core ccm cmac
+    cipher cipher_wrap constant_time ecdsa ecdh ecp ecp_curves gcm hkdf md md5
+    oid pkcs5 platform_util rsa rsa_alt_helpers sha1 sha256 sha512 chachapoly
+    chacha20 poly1305 ripemd160 des x509write x509write_crt x509_create
+    x509write_csr base64 pem pk pk_wrap pkwrite x509 x509_crt pkparse pk_ecc
+    pkcs12 eddsa sha3)
+list(TRANSFORM u2f_crypto_sources PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/../pico-keys-sdk/third-party/mbedtls/library/")
+list(TRANSFORM u2f_crypto_sources APPEND ".c")
+add_library(u2f_test_crypto STATIC ${u2f_crypto_sources})
+target_include_directories(u2f_test_crypto PUBLIC ../pico-keys-sdk/third-party/mbedtls/include)
+target_compile_definitions(u2f_test_crypto PUBLIC
+    MBEDTLS_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../pico-keys-sdk/config/mbedtls_config.h"
+    MBEDTLS_EDDSA_C=1 MBEDTLS_ECP_DP_ED25519_ENABLED=1
+    MBEDTLS_ECP_DP_ED448_ENABLED=1 MBEDTLS_SHA3_C=1)
+target_compile_options(u2f_test_crypto PRIVATE -ffunction-sections -fdata-sections)
+add_executable(u2f_keys_test u2f_keys_test.c ../src/fido/u2f_keys.c
+    ../src/fido/key_derivation.c ../src/fido/certificate.c ../src/fido/cbor_reset.c
+    ../src/fido/cmd_register.c ../src/fido/cmd_authenticate.c)
+target_link_libraries(u2f_keys_test PRIVATE u2f_test_crypto)
+target_compile_definitions(u2f_keys_test PRIVATE ENABLE_EMULATION)
+target_include_directories(u2f_keys_test PRIVATE
+    ../src/fido ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/rng
+    ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/usb/emulation ../pico-keys-sdk/src/compat
+    ../pico-keys-sdk/third-party/tinycbor/src)
+target_compile_options(u2f_keys_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(u2f_keys_test PRIVATE -Wl,--gc-sections)
+add_test(NAME u2f_keys_and_commands COMMAND u2f_keys_test)
+set_tests_properties(u2f_keys_and_commands PROPERTIES TIMEOUT 30)

@@ -36,6 +36,8 @@
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
 extern int scan_files_fido(void);
+extern int fido_create_certificate(mbedtls_ecdsa_context *key, uint8_t *buffer, size_t size, const char *subject);
+extern int derive_key_from_root(const uint8_t root[32], const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key);
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecp_keypair *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
 extern int wait_button_pressed(void);

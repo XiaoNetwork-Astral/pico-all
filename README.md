@@ -21,7 +21,7 @@ Enter BOOTSEL mode and copy `build/pico_all.uf2` to the board's USB drive; exist
 
 Green breathing: idle · Yellow flashing: press BOOTSEL · Blue: firmware update mode · Red flashes: confirmation timed out
 
-With a FIDO PIN configured, U2F currently requires a PIN-unlocked session
+New U2F credentials work with a button press after reconnecting, independently of the FIDO2 PIN. Legacy U2F credentials still need a PIN-unlocked session; re-register to use the new behavior.
 
 ## License
 

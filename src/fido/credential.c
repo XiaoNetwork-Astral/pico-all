@@ -22,6 +22,7 @@
 #include "mbedtls/constant_time.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
+#include "u2f_keys.h"
 #if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
@@ -468,9 +469,13 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
     memcpy(copy_cred_id, cred_id, cred_id_len);
     ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash, false);
     if (ret != 0) { // U2F?
-        if (cred_id_len != KEY_HANDLE_LEN || verify_key(rp_id_hash, cred_id, NULL) != 0) {
+        if (cred_id_len != KEY_HANDLE_LEN || u2f_load_key(rp_id_hash, cred_id, cred_id_len, NULL) != 0) {
             CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
         }
+        cred->u2f = true;
+        cred->curve = FIDO2_CURVE_P256;
+        cred->alg = FIDO2_ALG_ES256;
+        cred->require_button = true;
     }
     else {
         CborParser parser;

@@ -23,6 +23,7 @@
 #include "files.h"
 #include "hid/ctap_hid.h"
 #include "management.h"
+#include "u2f_keys.h"
 
 const uint8_t u2f_aid[] = {
     7,
@@ -63,15 +64,18 @@ int cmd_register(void) {
     if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE) {
         return SW_WRONG_LENGTH();
     }
+    if (get_opts() & FIDO2_OPT_AUV) return SW_CONDITIONS_NOT_SATISFIED();
     if (wait_button_pressed() > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     if (memcmp(req->appId, bogus_firefox,
                CTAP_APPID_SIZE) == 0 || memcmp(req->appId, bogus_chrome, CTAP_APPID_SIZE) == 0)
     { return ctap_error(CTAP1_ERR_CHANNEL_BUSY); }
+    if (u2f_prepare_attestation() != PICOKEYS_OK) return SW_EXEC_ERROR();
+    file_t *cert = file_search_by_fid(EF_U2F_CERT, NULL, SPECIFY_EF);
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
-    int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);
+    int ret = u2f_new_key(req->appId, resp->keyHandleCertSig, &key);
     if (ret != PICOKEYS_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
@@ -82,12 +86,12 @@ int cmd_register(void) {
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    uint32_t stored_certdev_size = file_get_size(ef_certdev);
-    if (stored_certdev_size > CTAP_MAX_ATT_CERT_SIZE) {
+    uint32_t stored_certdev_size = file_get_size(cert);
+    if (stored_certdev_size == 0 || stored_certdev_size > CTAP_MAX_ATT_CERT_SIZE) {
         return SW_EXEC_ERROR();
     }
     uint16_t ef_certdev_size = (uint16_t)stored_certdev_size;
-    memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(ef_certdev), ef_certdev_size);
+    memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(cert), ef_certdev_size);
     uint8_t hash[32], sign_base[1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE + KEY_HANDLE_LEN + CTAP_EC_POINT_SIZE];
     sign_base[0] = CTAP_REGISTER_HASH_ID;
     memcpy(sign_base + 1, req->appId, CTAP_APPID_SIZE);
@@ -100,7 +104,7 @@ int cmd_register(void) {
     }
     mbedtls_ecdsa_init(&key);
     uint8_t key_dev[32] = {0};
-    ret = load_keydev(key_dev);
+    ret = u2f_load_root(key_dev);
     if (ret != PICOKEYS_OK) {
         return SW_EXEC_ERROR();
     }

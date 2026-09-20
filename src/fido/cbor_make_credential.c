@@ -422,6 +422,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         //else if (options.up == NULL) //5.7
         //rup = ptrue;
     }
+    // A locked FIDO2 root still requires PIN authorization regardless of the
+    // independent U2F capability reported by GetInfo.
+    if (file_has_data(ef_pin) && !keydev_unlocked && !pinUvAuthParam.present) {
+        CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+    }
     if (get_opts() & FIDO2_OPT_AUV) {
         if (!file_has_data(ef_pin) || (pinUvAuthParam.present == false && options.uv != ptrue)) { //6.2, 6.4
             CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);

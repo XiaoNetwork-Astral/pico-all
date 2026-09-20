@@ -35,6 +35,8 @@ static bool fido_reset_should_clear(uint16_t fid) {
     switch (fid) {
         case EF_KEY_DEV:
         case EF_KEY_DEV_ENC:
+        case EF_U2F_ROOT:
+        case EF_U2F_CERT:
         case EF_EE_DEV:
         case EF_EE_DEV_EA:
         case EF_VAULT_KEY:

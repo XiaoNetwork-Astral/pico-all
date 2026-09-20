@@ -55,6 +55,7 @@ typedef struct Credential {
     CborByteString residentId;
     CborByteString privateKey;
     CredOptions opts;
+    bool u2f;
     bool imported;
     bool require_button;
     bool present;

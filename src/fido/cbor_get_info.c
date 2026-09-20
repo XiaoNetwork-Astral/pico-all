@@ -92,7 +92,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-    bool alwaysUv = (get_opts() & FIDO2_OPT_AUV) || (file_has_data(ef_pin) && !keydev_unlocked);
+    bool alwaysUv = (get_opts() & FIDO2_OPT_AUV) != 0;
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4 + !alwaysUv));
     if (!alwaysUv) {
         CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "U2F_V2"));

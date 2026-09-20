@@ -196,36 +196,6 @@ int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
     return derive_key(NULL, false, key_path, mbedtls_curve, key);
 }
 
-static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
-    mbedtls_x509write_cert ctx;
-    mbedtls_x509write_crt_init(&ctx);
-    mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
-    mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
-    mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
-    mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
-    uint8_t serial[16];
-    random_fill_buffer(BYTE_ARRAY(serial, sizeof(serial)));
-    mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
-    mbedtls_pk_context key;
-    mbedtls_pk_init(&key);
-    key.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY);
-    key.pk_ctx = ecdsa;
-    mbedtls_x509write_crt_set_subject_key(&ctx, &key);
-    mbedtls_x509write_crt_set_issuer_key(&ctx, &key);
-    mbedtls_x509write_crt_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
-    mbedtls_x509write_crt_set_basic_constraints(&ctx, 0, 0);
-    mbedtls_x509write_crt_set_subject_key_identifier(&ctx);
-    mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
-    mbedtls_x509write_crt_set_key_usage(&ctx,
-                                        MBEDTLS_X509_KU_DIGITAL_SIGNATURE |
-                                        MBEDTLS_X509_KU_KEY_CERT_SIGN);
-    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_fill_iterator, NULL);
-    mbedtls_x509write_crt_free(&ctx);
-    /* pk cannot be freed, as it is freed later */
-    //mbedtls_pk_free(&key);
-    return ret;
-}
-
 int load_keydev(uint8_t key[32]) {
     bool pin_wrapped = false;
 
@@ -286,91 +256,6 @@ int load_keydev(uint8_t key[32]) {
         keydev_unlocked = true;
     }
     return PICOKEYS_OK;
-}
-
-int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
-    for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
-        uint32_t k = 0;
-        memcpy(&k, &keyHandle[i * sizeof(uint32_t)], sizeof(k));
-        if (!(k & 0x80000000)) {
-            return -1;
-        }
-    }
-    mbedtls_ecdsa_context ctx;
-    if (key == NULL) {
-        mbedtls_ecdsa_init(&ctx);
-        key = &ctx;
-        if (derive_key(appId, false, (uint8_t *) keyHandle, MBEDTLS_ECP_DP_SECP256R1, &ctx) != 0) {
-            mbedtls_ecdsa_free(&ctx);
-            return -3;
-        }
-    }
-    uint8_t hmac[32], d[32];
-    size_t olen = 0;
-    int ret = mbedtls_ecp_write_key_ext(key, &olen, d, sizeof(d));
-    if (key == &ctx) {
-        mbedtls_ecdsa_free(&ctx);
-    }
-    if (ret != 0) {
-        return -2;
-    }
-    uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
-    memcpy(key_base, appId, CTAP_APPID_SIZE);
-    memcpy(key_base + CTAP_APPID_SIZE, keyHandle, KEY_PATH_LEN);
-    ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
-    mbedtls_platform_zeroize(d, sizeof(d));
-    return mbedtls_ct_memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
-}
-
-int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key) {
-    uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
-    int r = 0;
-    memset(outk, 0, sizeof(outk));
-    if ((r = load_keydev(outk)) != PICOKEYS_OK) {
-        printf("Error loading keydev: %d\n", r);
-        return r;
-    }
-    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
-        if (new_key == true) {
-            uint32_t val = 0;
-            random_fill_buffer(BYTE_ARRAY((uint8_t *)&val, sizeof(val)));
-            val |= 0x80000000;
-            memcpy(&key_handle[i * sizeof(uint32_t)], &val, sizeof(uint32_t));
-        }
-        r = mbedtls_hkdf(md_info, &key_handle[i * sizeof(uint32_t)], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk));
-        if (r != 0) {
-            mbedtls_platform_zeroize(outk, sizeof(outk));
-            return r;
-        }
-    }
-    if (new_key == true) {
-        uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
-        memcpy(key_base, app_id, CTAP_APPID_SIZE);
-        memcpy(key_base + CTAP_APPID_SIZE, key_handle, KEY_PATH_LEN);
-        if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, key_base, sizeof(key_base), key_handle + 32)) != 0) {
-            mbedtls_platform_zeroize(outk, sizeof(outk));
-            return r;
-        }
-    }
-    if (key != NULL) {
-        mbedtls_ecp_group_load(&key->grp, curve);
-        const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(curve);
-        if (cinfo == NULL) {
-            return 1;
-        }
-        if (cinfo->bit_size % 8 != 0) {
-            outk[0] >>= 8 - (cinfo->bit_size % 8);
-        }
-        r = mbedtls_ecp_read_key(curve, key, outk, (size_t)((cinfo->bit_size + 7) / 8));
-        mbedtls_platform_zeroize(outk, sizeof(outk));
-        if (r != 0) {
-            return r;
-        }
-        return mbedtls_ecp_keypair_calc_public(key, random_fill_iterator, NULL);
-    }
-    mbedtls_platform_zeroize(outk, sizeof(outk));
-    return r;
 }
 
 int encrypt_keydev_f1(const uint8_t keydev[32]) {
@@ -445,7 +330,7 @@ int scan_files_fido(void) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
             }
-            ret = x509_create_cert(&key, cert, sizeof(cert));
+            ret = fido_create_certificate(&key, cert, sizeof(cert), "C=ES,O=Pico HSM,CN=Pico FIDO");
             mbedtls_ecdsa_free(&key);
             if (ret <= 0) {
                 return ret;

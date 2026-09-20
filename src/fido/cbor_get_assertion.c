@@ -28,6 +28,7 @@
 #include "apdu.h"
 #include "cbor_make_credential.h"
 #include "credential.h"
+#include "u2f_keys.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
 #ifndef ENABLE_EMULATION
@@ -324,6 +325,21 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
         }
 
+        if (!pinUvAuthParam.present) {
+            if (get_opts() & FIDO2_OPT_AUV) CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+            if (file_has_data(ef_pin) && !keydev_unlocked) {
+                bool has_u2f = false;
+                for (size_t i = 0; i < allowList_len; i++) {
+                    if (allowList[i].type.present && allowList[i].id.present &&
+                        strcmp(allowList[i].type.data, "public-key") == 0 &&
+                        u2f_load_key(rp_id_hash, allowList[i].id.data, allowList[i].id.len, NULL) == PICOKEYS_OK) {
+                        has_u2f = true;
+                        break;
+                    }
+                }
+                if (!has_u2f) CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+            }
+        }
         if (pinUvAuthParam.present == true) { //6.1
             int ret = verify((uint8_t)pinUvAuthProtocol, paut.data, clientDataHash.data, (uint16_t)clientDataHash.len, pinUvAuthParam.data);
             if (ret != CborNoError) {
@@ -741,7 +757,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecp_keypair_init(&ekey);
     size_t olen = 0;
     if (selcred) {
-        if (selcred->privateKey.present) {
+        if (selcred->u2f) {
+            ret = u2f_load_key(rp_id_hash, selcred->id.data, selcred->id.len, &ekey);
+        }
+        else if (selcred->privateKey.present) {
             ret = mbedtls_ecp_read_key(fido_curve_to_mbedtls((int)selcred->curve), &ekey, selcred->privateKey.data, selcred->privateKey.len);
             if (ret == 0) ret = mbedtls_ecp_keypair_calc_public(&ekey, random_fill_iterator, NULL);
         }
@@ -749,10 +768,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
         }
         if (ret != 0) {
-            if (derive_key(rp_id_hash, false, (uint8_t *)key_seed, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
-                mbedtls_ecp_keypair_free(&ekey);
-                CBOR_ERROR(CTAP1_ERR_OTHER);
-            }
+            mbedtls_ecp_keypair_free(&ekey);
+            CBOR_ERROR(CTAP1_ERR_OTHER);
         }
         if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
             md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);

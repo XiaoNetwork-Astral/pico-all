@@ -22,63 +22,44 @@
 #include "random.h"
 #include "files.h"
 #include "credential.h"
+#include "u2f_keys.h"
 
 int cmd_authenticate(void) {
     CTAP_AUTHENTICATE_REQ *req = (CTAP_AUTHENTICATE_REQ *) apdu.data;
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *) res_APDU;
-    //if (scan_files_fido(true) != PICOKEYS_OK)
-    //    return SW_EXEC_ERROR();
-    if (apdu.nc < CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1 + 1) {
-        return SW_WRONG_DATA();
-    }
-    if (req->keyHandleLen < KEY_HANDLE_LEN) {
-        return SW_INCORRECT_PARAMS();
-    }
-    if (P1(apdu) != CTAP_AUTH_ENFORCE && P1(apdu) != CTAP_AUTH_CHECK_ONLY) {
-        return SW_INCORRECT_P1P2();
-    }
-    if ((get_opts() & FIDO2_OPT_AUV) || (file_has_data(ef_pin) && !keydev_unlocked)) {
-        return SW_CONDITIONS_NOT_SATISFIED();
-    }
-    if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() > 0) {
-        return SW_CONDITIONS_NOT_SATISFIED();
-    }
+    if (apdu.nc < CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1) return SW_WRONG_DATA();
+    if (apdu.nc != CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1 + req->keyHandleLen ||
+        req->keyHandleLen < KEY_HANDLE_LEN) return SW_INCORRECT_PARAMS();
+    if (P1(apdu) != CTAP_AUTH_ENFORCE && P1(apdu) != CTAP_AUTH_CHECK_ONLY) return SW_INCORRECT_P1P2();
+    if (get_opts() & FIDO2_OPT_AUV) return SW_CONDITIONS_NOT_SATISFIED();
 
     mbedtls_ecp_keypair key;
     mbedtls_ecp_keypair_init(&key);
-    int ret = 0;
-    uint8_t *tmp_kh = (uint8_t *) calloc(1, req->keyHandleLen);
-    memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
-    if (credential_verify(tmp_kh, req->keyHandleLen, req->appId, false) == 0) {
-        Credential cred;
-        if (credential_load(req->keyHandle, req->keyHandleLen, req->appId, &cred) != 0) {
-            mbedtls_ecp_keypair_free(&key);
-            free(tmp_kh);
-            return SW_INCORRECT_PARAMS();
-        }
-        if (cred.extensions.credProtect == CRED_PROT_UV_REQUIRED) {
-            credential_free(&cred);
-            mbedtls_ecp_keypair_free(&key);
-            free(tmp_kh);
-            return SW_SECURITY_STATUS_NOT_SATISFIED();
-        }
-        credential_free(&cred);
-        ret = fido_load_key(FIDO2_CURVE_P256, req->keyHandle, &key);
+    int ret;
+    if (req->keyHandleLen == KEY_HANDLE_LEN) {
+        ret = u2f_load_key(req->appId, req->keyHandle, req->keyHandleLen, &key);
     }
     else {
-        ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
-        if (verify_key(req->appId, req->keyHandle, &key) != 0) {
+        // CTAP2 credentials retain their existing PIN and credProtect rules.
+        if (file_has_data(ef_pin) && !keydev_unlocked) {
             mbedtls_ecp_keypair_free(&key);
-            free(tmp_kh);
-            return SW_INCORRECT_PARAMS();
+            return SW_CONDITIONS_NOT_SATISFIED();
         }
+        Credential cred = {0};
+        ret = credential_load(req->keyHandle, req->keyHandleLen, req->appId, &cred);
+        if (ret == 0 && cred.extensions.credProtect == CRED_PROT_UV_REQUIRED) {
+            credential_free(&cred);
+            mbedtls_ecp_keypair_free(&key);
+            return SW_SECURITY_STATUS_NOT_SATISFIED();
+        }
+        if (ret == 0) ret = fido_load_key(FIDO2_CURVE_P256, req->keyHandle, &key);
+        credential_free(&cred);
     }
-    free(tmp_kh);
     if (ret != PICOKEYS_OK) {
         mbedtls_ecp_keypair_free(&key);
-        return SW_EXEC_ERROR();
+        return SW_INCORRECT_PARAMS();
     }
-    if (P1(apdu) == CTAP_AUTH_CHECK_ONLY) {
+    if (P1(apdu) == CTAP_AUTH_CHECK_ONLY || wait_button_pressed() > 0) {
         mbedtls_ecp_keypair_free(&key);
         return SW_CONDITIONS_NOT_SATISFIED();
     }
