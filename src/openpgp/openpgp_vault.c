@@ -146,6 +146,14 @@ int openpgp_vault_clear_openpgp(void) {
     return ret == PICOKEYS_ERR_FILE_NOT_FOUND ? PICOKEYS_OK : ret;
 }
 
+int openpgp_vault_clear_piv(void) {
+    if (openpgp_vault_sdk_init() != PICOKEYS_OK) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    int ret = picokeys_vault_delete_kvault(OPENPGP_VAULT_APP_PIV);
+    return ret == PICOKEYS_ERR_FILE_NOT_FOUND ? PICOKEYS_OK : ret;
+}
+
 int openpgp_vault_clear_wrappers(void) {
     if (openpgp_vault_sdk_init() != PICOKEYS_OK) {
         return PICOKEYS_EXEC_ERROR;

@@ -37,3 +37,16 @@ target_compile_options(apdu_transport_test PRIVATE -ffunction-sections -fdata-se
 target_link_options(apdu_transport_test PRIVATE -Wl,--gc-sections)
 add_test(NAME apdu_transport_routing COMMAND apdu_transport_test)
 set_tests_properties(apdu_transport_routing PROPERTIES TIMEOUT 15)
+
+add_executable(piv_reset_test piv_reset_test.c
+    ../src/piv/cmd_reset.c ../src/openpgp/cmd_terminate_df.c ../src/openpgp/key_container.c)
+target_compile_definitions(piv_reset_test PRIVATE ENABLE_EMULATION)
+target_include_directories(piv_reset_test PRIVATE
+    ../src/piv ../src/openpgp ../pico-keys-sdk/src ../pico-keys-sdk/src/fs
+    ../pico-keys-sdk/src/rng ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/compat
+    ../pico-keys-sdk/third-party/mbedtls/include
+)
+target_compile_options(piv_reset_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(piv_reset_test PRIVATE -Wl,--gc-sections)
+add_test(NAME piv_openpgp_reset_isolation COMMAND piv_reset_test)
+set_tests_properties(piv_openpgp_reset_isolation PROPERTIES TIMEOUT 15)

@@ -24,7 +24,7 @@ static bool pw3_verifier_unusable(void) {
 }
 
 static bool openpgp_terminate_preserve_fid(uint16_t fid) {
-    if (fid == EF_PW_PRIV || fid == EF_PW_RETRIES || fid == EF_DEK_PWPIV || fid == EF_META || fid == EF_VAULT_KEY) {
+    if (fid == EF_PW_PRIV || fid == EF_PW_RETRIES || fid == EF_DEK_PWPIV || fid == EF_PIV_PIN || fid == EF_PIV_PUK || fid == EF_META || fid == EF_VAULT_KEY) {
         return true;
     }
     if (openpgp_key_container_is_piv(fid)) {
