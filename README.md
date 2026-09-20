@@ -25,12 +25,15 @@ New U2F credentials work with a button press after reconnecting, independently o
 
 ## Firmware tool
 
-Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. One English menu: board info, local signing, verified flashing and security configuration. Use BOOTSEL for firmware and fuse operations; Prepare and Prove use normal mode.
+Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on PATH. One script for board info, local signing, verified flashing and security configuration. Use BOOTSEL for firmware and fuse operations; Prepare and Prove use normal mode.
 
 ```sh
 python -m pip install -r requirements.txt
-python firmware.py
+python firmware.py -h
+python firmware.py menu
 ```
+
+Use `-h` for a quick reference and `--help` for details and examples, including `python firmware.py security enable --help`. Firmware paths are positional: `python firmware.py security load-key signed.uf2 -s SERIAL`.
 
 Security stages: **Load key → Harden → Prepare → Enable → Prove → Lock**. The menu explains each step; CLI security commands preview changes unless `--apply` is supplied. Power-cycle and test between irreversible stages.
 

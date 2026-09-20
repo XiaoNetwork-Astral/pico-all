@@ -22,6 +22,7 @@ except ImportError:
     raise SystemExit("Install dependencies: python -m pip install -r requirements.txt")
 
 console = Console(highlight=False)
+error_console = Console(stderr=True, highlight=False)
 ROOT = Path(__file__).resolve().parent
 DEFAULT_KEY = ROOT / ".private" / "firmware-signing.pem"
 
@@ -433,7 +434,7 @@ def security(tool: str, action: str, serial: str, firmware: str | None = None,
         return
     if action == "prove":
         if not firmware:
-            raise FirmwareError("Choose the signed firmware with --firmware.")
+            raise FirmwareError("Pass the signed firmware as FILE after the security command.")
         prove_boot(tool, serial, firmware)
         return
     otp = BootOtp(tool, serial)
@@ -443,7 +444,7 @@ def security(tool: str, action: str, serial: str, firmware: str | None = None,
     if action == "status":
         return
     if not firmware:
-        raise FirmwareError("Choose the signed firmware with --firmware.")
+        raise FirmwareError("Pass the signed firmware as FILE after the security command.")
     source = uf2_file(firmware)
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
     fp = firmware_fingerprint(tool, source)
@@ -505,32 +506,139 @@ def security_menu(tool: str) -> None:
     security(tool, action, serial, source, slot, apply=action not in ("status", "prove"))
 
 
+class HelpAction(argparse.Action):
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.print_help(detailed=option_string == "--help")
+        parser.exit()
+
+
+class CliParser(argparse.ArgumentParser):
+    def __init__(self, *args, details="", examples="", **kwargs):
+        kwargs.update(add_help=False, allow_abbrev=False,
+                      formatter_class=argparse.RawDescriptionHelpFormatter)
+        super().__init__(*args, **kwargs)
+        self.details, self.examples = details, examples
+        help_group = self.add_argument_group("Help")
+        help_group.add_argument("-h", "--help", action=HelpAction,
+                               help="Short help (-h) or detailed help (--help)")
+
+    def format_help(self, detailed=False):
+        order = ["positional arguments", "Commands", "Security commands", "Signing options",
+                 "Key options", "Output options", "Connection options", "Confirmation options", "Help"]
+        self._action_groups.sort(key=lambda group: order.index(group.title) if group.title in order else -1)
+        description, epilog = self.description, self.epilog
+        if detailed:
+            self.description = "\n\n".join(x for x in (description, self.details) if x)
+            self.epilog = "Examples:\n" + self.examples if self.examples else None
+        else:
+            self.epilog = "Use --help for details and examples."
+        try:
+            return super().format_help()
+        finally:
+            self.description, self.epilog = description, epilog
+
+    def print_help(self, file=None, detailed=False):
+        output = Console(file=file or sys.stdout, highlight=False)
+        for line in self.format_help(detailed).splitlines():
+            output.print(line, style="bold cyan" if line.endswith(":") else None, markup=False)
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: error: {message}\nTry '{self.prog} --help' for details.\n")
+
+
 def parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--picotool", help="picotool executable path")
-    top = argparse.ArgumentParser(description="Sign, inspect, update, and secure board firmware.", parents=[common])
-    commands = top.add_subparsers(dest="command")
-    # Separate defaults let --picotool work before or after the subcommand.
-    local = argparse.ArgumentParser(add_help=False)
-    local.add_argument("--picotool", default=argparse.SUPPRESS, help="picotool executable path")
-    info = commands.add_parser("info", parents=[local], help="Read board firmware in BOOTSEL mode")
-    info.add_argument("--serial", help="Target board serial number")
-    signer = commands.add_parser("sign", parents=[local], help="Sign a UF2 locally")
-    signer.add_argument("firmware", help="Input UF2")
-    signer.add_argument("--key", default=str(DEFAULT_KEY), help="secp256k1 PEM private key")
-    signer.add_argument("--new-key", action="store_true", help="Create the key; never overwrite an existing key")
-    signer.add_argument("-o", "--output", help="Signed UF2 path")
-    signer.add_argument("-y", "--yes", action="store_true", help="Allow replacing an existing output")
-    updater = commands.add_parser("flash", parents=[local], help="Flash a UF2, verify, and restart")
-    updater.add_argument("firmware", help="Firmware UF2")
-    updater.add_argument("--serial", help="Target board serial number")
-    updater.add_argument("-y", "--yes", action="store_true", help="Skip the flash confirmation")
-    secure = commands.add_parser("security", parents=[local], help="Inspect or configure RP2350 security")
-    secure.add_argument("action", choices=["status", "load-key", "harden", "prepare", "enable", "prove", "lock"])
-    secure.add_argument("--serial", required=True, help="Exact target board serial")
-    secure.add_argument("--firmware", help="The signed UF2 installed on the board")
-    secure.add_argument("--slot", type=int, choices=range(4), default=0)
-    secure.add_argument("--apply", action="store_true", help="Allow interactive confirmation; default is preview only")
+    top = CliParser(prog="firmware.py", description="Manage Pico All firmware and board security.",
+                    details="Firmware operations use BOOTSEL mode. Security Prepare and Prove use normal mode.\n"
+                            "Run the menu for guided prompts, or use a command directly.",
+                    examples="  python firmware.py info\n"
+                             "  python firmware.py sign firmware.uf2 -k .private/key.pem\n"
+                             "  python firmware.py flash firmware.signed.uf2\n"
+                             "  python firmware.py security -h\n"
+                             "  python firmware.py menu")
+    top.set_defaults(picotool=None, serial=None, action=None)
+
+    def connection(command, device=False):
+        group = command.add_argument_group("Connection options")
+        group.add_argument("--picotool", metavar="PATH", default=argparse.SUPPRESS,
+                           help="picotool executable (or PICOTOOL / PATH)")
+        if device:
+            group.add_argument("-s", "--serial", metavar="ID", default=argparse.SUPPRESS,
+                               help="Target board serial (required)" if device == "required" else "Target board serial (auto if omitted)")
+
+    def child(parent, name, summary, details="", examples="", device=False):
+        command = parent.add_parser(name, help=summary, description=summary,
+                                    details=details, examples=examples)
+        connection(command, device)
+        return command
+
+    connection(top)
+    commands = top.add_subparsers(dest="command", title="Commands", metavar="COMMAND")
+    child(commands, "info", "Read board firmware information",
+          "Connect in BOOTSEL mode. Use --serial when more than one board is connected.",
+          "  python firmware.py info -s 0011223344556677", device=True)
+    signer = child(commands, "sign", "Sign a UF2 with a local key",
+                   "Use a secp256k1 PEM private key. --new-key creates a key and never overwrites one.\n"
+                   "The output is verified before it replaces a file. Without -o, the output is FILE.signed.uf2.\n"
+                   "Default key: .private/firmware-signing.pem beside this script. Keep its backup offline.",
+                   "  python firmware.py sign firmware.uf2 -k .private/key.pem --new-key\n"
+                   "  python firmware.py sign firmware.uf2 -k .private/key.pem -o signed.uf2")
+    signer.add_argument("firmware", metavar="FILE", help="Input UF2")
+    signing = signer.add_argument_group("Signing options")
+    signing.add_argument("-k", "--key", metavar="PEM", default=str(DEFAULT_KEY), help="Local secp256k1 private key")
+    signing.add_argument("--new-key", action="store_true", help="Create the signing key")
+    output = signer.add_argument_group("Output options")
+    output.add_argument("-o", "--output", metavar="FILE", help="Signed UF2 destination")
+    output.add_argument("-y", "--yes", action="store_true", help="Allow replacing the output without a prompt")
+    updater = child(commands, "flash", "Flash a UF2, verify it and restart",
+                    "Connect in BOOTSEL mode. Writes are read back before restart.\n"
+                    "--yes skips this flash confirmation; it does not authorize OTP operations.",
+                    "  python firmware.py flash signed.uf2 -s 0011223344556677", device=True)
+    updater.add_argument("firmware", metavar="FILE", help="Firmware UF2")
+    updater.add_argument_group("Confirmation options").add_argument(
+        "-y", "--yes", action="store_true", help="Skip the flash confirmation")
+    secure = child(commands, "security", "Inspect and configure RP2350 security",
+                   "Stages: load-key -> harden -> prepare -> enable -> prove -> lock.\n"
+                   "Power-cycle and test between irreversible stages. Prepare and Prove use normal mode;\n"
+                   "the other stages use BOOTSEL. Every stage requires an exact --serial.\n"
+                   "Writes default to a preview. --apply enables interactive confirmation, never bypasses it.",
+                   "  python firmware.py security status -s 0011223344556677\n"
+                   "  python firmware.py security enable --help\n"
+                   "  python firmware.py security load-key signed.uf2 -s 0011223344556677", device="required")
+    actions = secure.add_subparsers(dest="action", title="Security commands", metavar="COMMAND")
+    stages = [
+        ("status", "Read security fuse settings", "Read-only. Settings stored in fuses may require a power cycle to take effect."),
+        ("load-key", "Register a firmware signing key", "Register the public-key fingerprint from a verified signed UF2.\nThis permanently uses an OTP key slot. It does not enable Secure Boot."),
+        ("harden", "Disable debug and enable glitch detection", "Permanently disable debug and enable maximum glitch sensitivity.\nVerify a power-cycle boot before continuing to Enable."),
+        ("prepare", "Clear application data before OTP setup", "Normal mode. Deletes application credentials, PINs and settings after typed and board-button confirmation.\nThe board returns to BOOTSEL. Continue to Enable without starting the application again."),
+        ("enable", "Enable signed boot and automatic OTP setup", "Permanently require signed firmware. The installed image must match FILE.\nFirst-time setup requires empty credential storage and completed hardening.\nAfter a protected boot, firmware initializes the device roots automatically."),
+        ("prove", "Check signed boot and OTP root activation", "Read-only board check in normal mode. Saves a local boot-check record for FILE and this board.\nLock requires this record and verifies that the same firmware is still installed."),
+        ("lock", "Finalize boot protection and trusted keys", "Permanently revoke every other signing-key slot and make boot configuration read-only.\nKey rotation ends here. Keep the signing key backed up offline; signed BOOTSEL updates remain available."),
+    ]
+    for name, summary, detail in stages:
+        needs_file = name not in ("status", "prepare")
+        writes = name not in ("status", "prove")
+        example = f"  python firmware.py security {name}" + (" signed.uf2" if needs_file else "") + " -s 0011223344556677"
+        if writes:
+            detail += "\nDefault: preview only. Add --apply to review and confirm; an interactive terminal is required."
+            example += "\n" + example + " --apply"
+        action = child(actions, name, summary, detail, example, device="required")
+        if needs_file:
+            action.add_argument("firmware", metavar="FILE", help="Signed UF2 installed on the board")
+        if name == "load-key":
+            action.add_argument_group("Key options").add_argument(
+                "--slot", type=int, choices=range(4), default=0, help="Boot key slot (default: 0)")
+        if writes:
+            action.add_argument_group("Confirmation options").add_argument(
+                "--apply", action="store_true", help="Review and confirm this stage (default: preview)")
+        action.set_defaults(selected_parser=action)
+    child(commands, "menu", "Open the interactive menu",
+          "Requires an interactive terminal. The menu offers the same operations and confirmations as the CLI.",
+          "  python firmware.py menu")
+    secure.set_defaults(selected_parser=secure)
     return top
 
 
@@ -560,8 +668,24 @@ def menu(tool: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    arguments = parser().parse_args(argv)
+    cli = parser()
+    arguments = cli.parse_args(argv)
+    if arguments.command is None:
+        cli.print_help()
+        return 0
+    if arguments.command == "security":
+        if arguments.action is None:
+            arguments.selected_parser.print_help()
+            return 0
+        if not arguments.serial:
+            arguments.selected_parser.error("the following argument is required: -s/--serial")
+    if arguments.command == "menu" and not sys.stdin.isatty():
+        cli.error("menu requires an interactive terminal; use a command directly")
     try:
+        # Normal-mode APDUs do not need the picotool executable.
+        if arguments.command == "security" and arguments.action == "prepare":
+            prepare_storage(arguments.serial, arguments.apply)
+            return 0
         tool = tool_path(arguments.picotool)
         if arguments.command == "info":
             board_info(tool, arguments.serial)
@@ -570,20 +694,19 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "flash":
             flash(tool, arguments.firmware, arguments.serial, arguments.yes)
         elif arguments.command == "security":
-            security(tool, arguments.action, arguments.serial, arguments.firmware, arguments.slot, arguments.apply)
-        elif sys.stdin.isatty():
+            security(tool, arguments.action, arguments.serial, getattr(arguments, "firmware", None),
+                     getattr(arguments, "slot", 0), getattr(arguments, "apply", False))
+        elif arguments.command == "menu":
             menu(tool)
-        else:
-            parser().print_help()
         return 0
     except KeyboardInterrupt:
-        console.print("Interrupted. If flashing, reconnect in BOOTSEL mode and retry.", style="yellow")
+        error_console.print("Interrupted. If flashing, reconnect in BOOTSEL mode and retry.", style="yellow")
         return 130
     except (FirmwareError, OSError, EOFError) as error:
-        console.print(str(error) or "Input closed.", style="red", markup=False)
+        error_console.print(str(error) or "Input closed.", style="red", markup=False)
         return 1
     except ImportError:
-        console.print("Install dependencies: python -m pip install -r requirements.txt", style="red")
+        error_console.print("Install dependencies: python -m pip install -r requirements.txt", style="red")
         return 1
 
 

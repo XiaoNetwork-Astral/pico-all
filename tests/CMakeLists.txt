@@ -91,6 +91,10 @@ set_tests_properties(otp_root_power_cut_model PROPERTIES TIMEOUT 15)
 
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
+    add_test(NAME firmware_cli_and_signing
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover -s tests -p "firmware_*_test.py")
+    set_tests_properties(firmware_cli_and_signing PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.." TIMEOUT 30)
     add_test(NAME security_management_protocol
         COMMAND ${Python3_EXECUTABLE} -m unittest discover -s tests -p security_protocol_test.py)
     set_tests_properties(security_management_protocol PROPERTIES
