@@ -30,12 +30,11 @@ cmake --build build
 ```sh
 python -m pip install -r requirements.txt
 python firmware.py -h
-python firmware.py menu
 ```
 
 使用 `-h` 查看速查，`--help` 查看详情和示例，例如 `python firmware.py security enable --help`。固件路径统一作为位置参数：`python firmware.py security load-key signed.uf2 -s SERIAL`。
 
-安全配置顺序：**登记密钥 → 加固 → 清空准备 → 启用 → 启动检查 → 锁定**。同一个菜单会提示每一步；CLI 默认只预览，提供 `--apply` 后才进入确认。不可逆阶段之间需要彻底断电并测试。
+安全配置顺序：**登记密钥 → 加固 → 清空准备 → 启用 → 启动检查 → 锁定**。各命令的 `--help` 会说明当前步骤；默认只预览，提供 `--apply` 后才进入确认。不可逆阶段之间需要彻底断电并测试。
 
 签名启动和调试保护生效后，固件才会自动初始化 OTP 设备根。首次配置要求凭据区为空；清空准备会在板上按键确认后删除应用凭据、PIN 和设置。已有 OTP 根在更新后保留。最终锁定会关闭密钥轮换，务必离线备份签名密钥；仍可通过 BOOTSEL 更新签名固件。
 

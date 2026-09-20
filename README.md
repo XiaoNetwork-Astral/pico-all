@@ -30,12 +30,11 @@ Requires Python 3.10+ and [picotool](https://github.com/raspberrypi/picotool) on
 ```sh
 python -m pip install -r requirements.txt
 python firmware.py -h
-python firmware.py menu
 ```
 
 Use `-h` for a quick reference and `--help` for details and examples, including `python firmware.py security enable --help`. Firmware paths are positional: `python firmware.py security load-key signed.uf2 -s SERIAL`.
 
-Security stages: **Load key → Harden → Prepare → Enable → Prove → Lock**. The menu explains each step; CLI security commands preview changes unless `--apply` is supplied. Power-cycle and test between irreversible stages.
+Security stages: **Load key → Harden → Prepare → Enable → Prove → Lock**. Each command explains its stage in `--help`; security commands preview changes unless `--apply` is supplied. Power-cycle and test between irreversible stages.
 
 OTP device roots initialize automatically only after signed boot and debug protection are active. First-time setup requires empty credential storage; Prepare explicitly clears credentials, PINs and settings with a board-button confirmation. Existing roots are retained across updates. Lock disables key rotation; keep the signing key backed up offline. Signed BOOTSEL updates remain available.
 

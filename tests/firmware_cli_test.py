@@ -16,15 +16,14 @@ class CliTest(unittest.TestCase):
                 code = exit.code
         return code, out.getvalue(), err.getvalue()
 
-    def test_no_arguments_and_group_help_do_not_find_tools_or_open_menu(self):
-        with patch.object(firmware, 'tool_path') as tools, patch.object(firmware, 'menu') as menu:
+    def test_no_arguments_and_group_help_do_not_find_tools(self):
+        with patch.object(firmware, 'tool_path') as tools:
             for argv in [[], ['security']]:
                 code, out, err = self.invoke(argv)
                 self.assertEqual(code, 0)
                 self.assertIn('Commands' if not argv else 'Security commands', out)
                 self.assertFalse(err)
             tools.assert_not_called()
-            menu.assert_not_called()
 
     def test_short_and_long_help_work_at_every_level(self):
         for path in [[], ['sign'], ['security'], ['security', 'enable']]:
@@ -91,17 +90,6 @@ class CliTest(unittest.TestCase):
             self.assertEqual(self.invoke(['security', 'prepare', '-s', 'id', '--apply'])[0], 0)
             prepare.assert_called_with('id', True)
             tools.assert_not_called()
-
-    def test_menu_is_explicit_and_requires_a_terminal(self):
-        with patch.object(firmware.sys.stdin, 'isatty', return_value=False), patch.object(firmware, 'tool_path') as tools:
-            code, out, err = self.invoke(['menu'])
-            self.assertEqual(code, 2)
-            self.assertIn('interactive terminal', err)
-            tools.assert_not_called()
-        with patch.object(firmware.sys.stdin, 'isatty', return_value=True), \
-             patch.object(firmware, 'tool_path', return_value='tool'), patch.object(firmware, 'menu') as menu:
-            self.assertEqual(self.invoke(['menu'])[0], 0)
-            menu.assert_called_once_with('tool')
 
     def test_sign_short_options_route_to_existing_implementation(self):
         with patch.object(firmware, 'tool_path', return_value='tool'), patch.object(firmware, 'sign') as sign:

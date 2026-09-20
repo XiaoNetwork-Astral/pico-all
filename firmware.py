@@ -497,15 +497,6 @@ def security(tool: str, action: str, serial: str, firmware: str | None = None,
     console.print("Stage programmed and read back. Fully unplug before testing the next stage.", style="green")
 
 
-def security_menu(tool: str) -> None:
-    console.print("Security: status / load-key / harden / prepare / enable / prove / lock", style="cyan")
-    action = Prompt.ask("Stage", choices=["status", "load-key", "harden", "prepare", "enable", "prove", "lock"], default="status")
-    serial = Prompt.ask("Board serial")
-    source = None if action in ("status", "prepare") else Prompt.ask("Signed firmware UF2").strip().strip('"')
-    slot = int(Prompt.ask("Boot key slot", choices=["0", "1", "2", "3"], default="0")) if action == "load-key" else 0
-    security(tool, action, serial, source, slot, apply=action not in ("status", "prove"))
-
-
 class HelpAction(argparse.Action):
     def __init__(self, option_strings, dest=argparse.SUPPRESS, **kwargs):
         super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
@@ -552,13 +543,11 @@ class CliParser(argparse.ArgumentParser):
 
 def parser() -> argparse.ArgumentParser:
     top = CliParser(prog="firmware.py", description="Manage Pico All firmware and board security.",
-                    details="Firmware operations use BOOTSEL mode. Security Prepare and Prove use normal mode.\n"
-                            "Run the menu for guided prompts, or use a command directly.",
+                    details="Firmware operations use BOOTSEL mode. Security Prepare and Prove use normal mode.",
                     examples="  python firmware.py info\n"
                              "  python firmware.py sign firmware.uf2 -k .private/key.pem\n"
                              "  python firmware.py flash firmware.signed.uf2\n"
-                             "  python firmware.py security -h\n"
-                             "  python firmware.py menu")
+                             "  python firmware.py security -h")
     top.set_defaults(picotool=None, serial=None, action=None)
 
     def connection(command, device=False):
@@ -635,36 +624,8 @@ def parser() -> argparse.ArgumentParser:
             action.add_argument_group("Confirmation options").add_argument(
                 "--apply", action="store_true", help="Review and confirm this stage (default: preview)")
         action.set_defaults(selected_parser=action)
-    child(commands, "menu", "Open the interactive menu",
-          "Requires an interactive terminal. The menu offers the same operations and confirmations as the CLI.",
-          "  python firmware.py menu")
     secure.set_defaults(selected_parser=secure)
     return top
-
-
-def menu(tool: str) -> None:
-    console.print("Pico All Firmware", style="bold cyan")
-    while True:
-        console.print("\n1  Board info\n2  Sign firmware\n3  Flash firmware\n4  Security\n0  Exit")
-        choice = Prompt.ask("Action", choices=["1", "2", "3", "4", "0"], default="0")
-        if choice == "0":
-            return
-        try:
-            if choice == "1":
-                board_info(tool, Prompt.ask("Board serial (blank for auto)", default="") or None)
-            elif choice == "2":
-                source = Prompt.ask("Firmware UF2").strip().strip('"')
-                key = Prompt.ask("Private key PEM", default=str(DEFAULT_KEY)).strip().strip('"')
-                create = not Path(key).expanduser().exists() and Confirm.ask("Create this signing key?", default=True)
-                sign(tool, source, key, None, create)
-            elif choice == "4":
-                security_menu(tool)
-            else:
-                source = Prompt.ask("Firmware UF2").strip().strip('"')
-                serial = Prompt.ask("Board serial (blank for auto)", default="") or None
-                flash(tool, source, serial)
-        except (FirmwareError, OSError) as error:
-            console.print(str(error), style="red", markup=False)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -679,8 +640,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not arguments.serial:
             arguments.selected_parser.error("the following argument is required: -s/--serial")
-    if arguments.command == "menu" and not sys.stdin.isatty():
-        cli.error("menu requires an interactive terminal; use a command directly")
     try:
         # Normal-mode APDUs do not need the picotool executable.
         if arguments.command == "security" and arguments.action == "prepare":
@@ -696,8 +655,6 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "security":
             security(tool, arguments.action, arguments.serial, getattr(arguments, "firmware", None),
                      getattr(arguments, "slot", 0), getattr(arguments, "apply", False))
-        elif arguments.command == "menu":
-            menu(tool)
         return 0
     except KeyboardInterrupt:
         error_console.print("Interrupted. If flashing, reconnect in BOOTSEL mode and retry.", style="yellow")
