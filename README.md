@@ -35,8 +35,9 @@ ctest --test-dir build/tests --output-on-failure
 ## 刷写前
 
 - 本固件采用独立的应用存储格式；不迁移旧固件中的凭据，非空旧存储会拒绝加载
-- 上游首次启动可能生成硬件密钥，并写入、锁定 OTP 区域；清理旧数据和永久硬件初始化应在确认后进行
-- 固件签名不会自动启用 Secure Boot；Secure Boot 与锁定需要单独配置
+- 当前开发固件使用无硬件 OTP 模式；启动不写入、迁移密钥或设置页面权限，管理命令也不支持启用 Secure Boot / Secure Lock
+- 无 OTP 后备路径缺少硬件随机根密钥的保护；先用于开发测试，后续启用硬件密钥时需处理数据迁移或重新初始化
+- 不可逆的 OTP 初始化留到开发测试完成后实现；Secure Boot 与 Secure Lock 留待 Pico Forge 专项维护，固件签名本身不会启用这些功能
 - 默认 USB ID 为开发用途的 `FEFF:FCFD`；客户端及驱动适配仍需板上验证
 
 源码来自 [Pico FIDO](https://github.com/polhenarejos/pico-fido)、[Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp)、[Pico HSM](https://github.com/polhenarejos/pico-hsm) 与 [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk)；精确版本见 `upstream.json`，许可证见 `LICENSE`
