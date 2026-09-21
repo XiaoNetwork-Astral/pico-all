@@ -165,11 +165,11 @@ void button_wait_poll(void) {
     uint32_t flag = 0;
     if (result == BUTTON_EV_PRESSED) {
         flag = EV_BUTTON_PRESSED;
-        led_blink_n_times(1, LED_COLOR_GREEN, 180, 120);
+        led_notify(LED_NOTIFY_SUCCESS, 1, 180, 120);
     }
     else if (result == BUTTON_EV_TIMEOUT) {
         flag = EV_BUTTON_TIMEOUT;
-        led_blink_n_times(2, LED_COLOR_RED, 180, 180);
+        led_notify(LED_NOTIFY_TIMEOUT, 2, 180, 180);
     }
     else if (result == BUTTON_EV_CANCELLED) {
         flag = EV_BUTTON_CANCELLED;

@@ -86,6 +86,11 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
     *p++ = 10;
     memcpy(p, phy->led_status_present ? phy->led_status : defaults, 10);
     p += 10;
+    static const uint8_t notifications[7] = {1, 2, 255, 1, 255, 1, 255};
+    *p++ = PHY_LED_NOTIFICATIONS;
+    *p++ = 7;
+    memcpy(p, phy->led_notifications_present ? phy->led_notifications : notifications, 7);
+    p += 7;
     data->len += (size_t)(p - start);
     return PICOKEYS_OK;
 }
@@ -172,6 +177,14 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                         phy->led_order_present = true;
                     }
                 }
+                break;
+            case PHY_LED_NOTIFICATIONS:
+                if (tlen != 7 || v[0] != 1) return PICOKEYS_WRONG_DATA;
+                for (int i = 0; i < 3; i++) {
+                    if (v[1 + i * 2] > 7) return PICOKEYS_WRONG_DATA;
+                }
+                memcpy(phy->led_notifications, v, 7);
+                phy->led_notifications_present = true;
                 break;
             case PHY_LED_STATUS:
                 if (tlen != 10 || v[0] != 1 || v[1] > 1) return PICOKEYS_WRONG_DATA;

@@ -325,7 +325,7 @@ static int cmd_keydev_sign(void) {
 
 static void led_3_blinks(void) {
 #ifndef ENABLE_EMULATION
-    led_blink_n_times(3, LED_COLOR_GREEN, 100, 100);
+    led_notify(LED_NOTIFY_SUCCESS, 3, 100, 100);
 #endif
 }
 
@@ -347,6 +347,10 @@ static int cmd_write(void) {
         if (!updated.led_status_present && phy_data.led_status_present) {
             memcpy(updated.led_status, phy_data.led_status, sizeof(updated.led_status));
             updated.led_status_present = true;
+        }
+        if (!updated.led_notifications_present && phy_data.led_notifications_present) {
+            memcpy(updated.led_notifications, phy_data.led_notifications, sizeof(updated.led_notifications));
+            updated.led_notifications_present = true;
         }
         phy_data = updated;
         if (ret == PICOKEYS_OK) {

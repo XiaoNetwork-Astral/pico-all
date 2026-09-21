@@ -64,6 +64,12 @@ enum  {
 
 extern void led_set_mode(uint32_t mode);
 extern uint32_t led_get_mode(void);
+typedef enum {
+    LED_NOTIFY_SUCCESS,
+    LED_NOTIFY_TIMEOUT,
+    LED_NOTIFY_ERROR,
+} led_notification_t;
+extern void led_notify(led_notification_t notification, uint8_t count, uint32_t on_ms, uint32_t off_ms);
 extern void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t off_ms);
 extern void led_blinking_task(void);
 extern void led_off_all(void);

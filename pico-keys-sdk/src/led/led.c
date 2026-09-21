@@ -29,6 +29,7 @@ static volatile uint32_t led_mode = MODE_NOT_MOUNTED;
 static volatile bool blink_pending = false;
 static volatile uint8_t blink_count = 0;
 static volatile uint8_t blink_color = LED_COLOR_GREEN;
+static volatile uint32_t blink_brightness = MAX_BTNESS;
 static volatile uint32_t blink_on_ms = 0;
 static volatile uint32_t blink_off_ms = 0;
 
@@ -40,15 +41,33 @@ uint32_t led_get_mode(void) {
     return led_mode;
 }
 
-void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t off_ms) {
+static void led_blink(uint8_t count, uint8_t color, uint32_t brightness, uint32_t on_ms, uint32_t off_ms) {
     if (count == 0 || color > LED_COLOR_WHITE || on_ms == 0 || off_ms == 0 || on_ms > 4095 || off_ms > 4095) {
         return;
     }
     blink_count = count;
     blink_color = color;
+    blink_brightness = brightness;
     blink_on_ms = on_ms;
     blink_off_ms = off_ms;
     blink_pending = true;
+}
+
+void led_blink_n_times(uint8_t count, uint8_t color, uint32_t on_ms, uint32_t off_ms) {
+    led_blink(count, color, MAX_BTNESS, on_ms, off_ms);
+}
+
+void led_notify(led_notification_t notification, uint8_t count, uint32_t on_ms, uint32_t off_ms) {
+    if (notification > LED_NOTIFY_ERROR) return;
+    uint8_t color = notification == LED_NOTIFY_SUCCESS ? LED_COLOR_GREEN : LED_COLOR_RED;
+    uint32_t brightness = MAX_BTNESS;
+#if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
+    if (phy_data.led_notifications_present) {
+        color = phy_data.led_notifications[1 + notification * 2];
+        brightness = (phy_data.led_notifications[2 + notification * 2] * MAX_BTNESS + 127u) / 255u;
+    }
+#endif
+    led_blink(count, color, brightness, on_ms, off_ms);
 }
 
 static void led_render(uint8_t color, uint32_t brightness, float progress) {
@@ -69,7 +88,7 @@ void led_blinking_task(void) {
     static uint32_t breath_started = 0;
     static bool breath_initialized = false;
     static bool blink_active = false;
-    static uint32_t blink_started, active_on, active_off;
+    static uint32_t blink_started, active_on, active_off, active_brightness;
     static uint8_t active_count, active_color;
     uint32_t now = board_millis();
     uint32_t mode = led_mode;
@@ -91,6 +110,7 @@ void led_blinking_task(void) {
         blink_started = now;
         active_count = blink_count;
         active_color = blink_color;
+        active_brightness = blink_brightness;
         active_on = blink_on_ms;
         active_off = blink_off_ms;
         blink_active = true;
@@ -99,7 +119,7 @@ void led_blinking_task(void) {
         uint32_t elapsed = now - blink_started;
         uint32_t cycle = active_on + active_off;
         if (elapsed / cycle < active_count) {
-            led_render(active_color, MAX_BTNESS, elapsed % cycle < active_on);
+            led_render(active_color, active_brightness, elapsed % cycle < active_on);
             return;
         }
         blink_active = false;

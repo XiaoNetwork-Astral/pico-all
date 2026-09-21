@@ -28,6 +28,7 @@
 #include "management.h"
 #include "ctap2_cbor.h"
 #include "version.h"
+#include "led/led.h"
 
 const bool _btrue = true, _bfalse = false;
 
@@ -121,6 +122,11 @@ void *cbor_thread(void *arg) {
         size_t len = cbor_len;
         uint8_t cmd = cbor_cmd;
         apdu.sw = (uint16_t)cbor_parse(cmd, data, len);
+#ifndef ENABLE_EMULATION
+        if (apdu.sw == CTAP2_ERR_PROCESSING) {
+            led_notify(LED_NOTIFY_ERROR, 3, 180, 180);
+        }
+#endif
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU, res_APDU_size);
         }

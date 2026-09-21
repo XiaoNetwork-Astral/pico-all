@@ -465,7 +465,7 @@ bool check_user_presence_for_credential(bool require_button) {
 
 void fido_led_3_blinks(void) {
 #ifndef ENABLE_EMULATION
-    led_blink_n_times(3, LED_COLOR_GREEN, 100, 100);
+    led_notify(LED_NOTIFY_SUCCESS, 3, 100, 100);
 #endif
 }
 

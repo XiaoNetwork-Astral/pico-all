@@ -86,3 +86,20 @@ Output: unsigned `build/pico_all.uf2`. The default target is RP2350-One.
 ## License and credits
 
 [AGPL-3.0](LICENSE). Based on [Pico FIDO](https://github.com/polhenarejos/pico-fido), [Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp), [Pico HSM](https://github.com/polhenarejos/pico-hsm) and [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk) by Pol Henarejos and contributors. Original copyright notices are preserved; pinned revisions are listed in [upstream.json](upstream.json).
+
+
+### Status-light configuration
+
+Pico All advertises its effective light settings in the PHY response. TLV 0x10
+(version 1, steady flag, four colour/brightness pairs) controls Ready, Processing,
+Button confirmation and Firmware update. TLV 0x11 (version 1 followed by three
+colour/brightness pairs) controls Success, Timeout and Error notifications.
+Colours use the SDK palette (0–7); brightness uses 0–255. Defaults are cyan for
+Ready/Processing, yellow for confirmation, blue for update, green for success,
+and red for timeout/error. Notification timing remains unchanged; Error uses
+three 180 ms flashes for internal APDU execution/storage or CTAP processing failures.
+Ordinary discovery responses, such as an absent applet, do not flash an error.
+
+Older four-state configurations remain valid. Writes that omit either extension
+preserve its stored settings, and successful writes still require physical
+confirmation.

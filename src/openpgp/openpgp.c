@@ -321,7 +321,7 @@ void signal_private_key_use(uint16_t uif_fid) {
 #ifndef ENABLE_EMULATION
     file_t *ef = file_search_by_fid(uif_fid, NULL, SPECIFY_ANY);
     if (ef == NULL || ef->data == NULL || file_get_data(ef)[0] == 0) {
-        led_blink_n_times(3, LED_COLOR_GREEN, 100, 100);
+        led_notify(LED_NOTIFY_SUCCESS, 3, 100, 100);
     }
 #else
     (void)uif_fid;

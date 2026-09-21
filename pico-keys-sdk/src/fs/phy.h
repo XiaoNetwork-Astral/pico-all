@@ -32,6 +32,7 @@
 #define PHY_ENABLED_USB_ITF 0xB
 #define PHY_LED_DRIVER  0xC
 #define PHY_LED_STATUS  0x10 // Pico All: version, steady, four colour/brightness pairs
+#define PHY_LED_NOTIFICATIONS 0x11 // version, Success / Timeout / Error colour and brightness
 
 #define PHY_OPT_WCID    0x1
 #define PHY_OPT_DIMM    0x2
@@ -102,6 +103,7 @@ typedef struct phy_data {
     uint8_t led_driver;
     uint8_t led_order;
     uint8_t led_status[10];
+    uint8_t led_notifications[7];
 
     bool vidpid_present;
     bool led_gpio_present;
@@ -113,10 +115,11 @@ typedef struct phy_data {
     bool led_driver_present;
     bool led_order_present;
     bool led_status_present;
+    bool led_notifications_present;
 
 }) phy_data_t;
 
-#define PHY_MAX_SIZE    ((2+4)+(2+4)+(2+32)+(2+2)+(2+1)+(2+1)+(2+1)+(2+1)+(2+2)+(2+10))
+#define PHY_MAX_SIZE    ((2+4)+(2+4)+(2+32)+(2+2)+(2+1)+(2+1)+(2+1)+(2+1)+(2+2)+(2+10)+(2+7))
 
 #ifndef ENABLE_EMULATION
 extern int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data);

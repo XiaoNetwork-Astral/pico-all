@@ -242,6 +242,13 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
 
 uint16_t set_res_sw(uint8_t sw1, uint8_t sw2) {
     apdu.sw = make_uint16_be(sw1, sw2);
+#ifndef ENABLE_EMULATION
+    // Internal execution/storage failures only; normal probing (e.g. file not found)
+    // and presence timeouts must not replace their own status indications.
+    if ((sw1 == 0x64 && sw2 == 0) || sw1 == 0x65 || sw1 == 0x6f) {
+        led_notify(LED_NOTIFY_ERROR, 3, 180, 180);
+    }
+#endif
     if (sw1 != 0x90 && sw1 != 0x61) {
         res_APDU_size = 0;
     }
