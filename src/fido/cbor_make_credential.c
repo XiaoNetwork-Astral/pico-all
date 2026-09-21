@@ -21,6 +21,7 @@
 #include "hid/ctap_hid.h"
 #include "fido.h"
 #include "ctap.h"
+#include "org_attestation.h"
 #include "files.h"
 #include "apdu.h"
 #include "credential.h"
@@ -268,7 +269,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     if (enterpriseAttestation_present) {
         file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-        if (!(get_opts() & FIDO2_OPT_EA) || !file_has_data(ef_ee_ea)) {
+        if (!(get_opts() & FIDO2_OPT_EA) || (!file_has_data(ef_ee_ea) && !org_attestation_present())) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         if (enterpriseAttestation != 1 && enterpriseAttestation != 2) {
@@ -772,12 +773,20 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         mbedtls_ecp_keypair_free(&ekey);
         mbedtls_ecp_keypair_init(&ekey);
         uint8_t key[32] = {0};
-        if (load_keydev(key) != 0) {
+        if ((enterpriseAttestation == 2 && org_attestation_present() ?
+             org_attestation_key(key) : load_keydev(key)) != 0) {
             CBOR_ERROR(CTAP1_ERR_OTHER);
         }
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, key, 32);
         mbedtls_platform_zeroize(key, sizeof(key));
+        if (ret != 0) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+        ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
+        if (ret != 0) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
         self_attestation = false;
     }
     if (md != NULL) {
@@ -832,9 +841,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             ef_cert = ef_certdev;
         }
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "x5c"));
-        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder2, &arrEncoder, 1));
-        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_cert), file_get_size(ef_cert)));
-        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder2, &arrEncoder));
+        if (enterpriseAttestation == 2 && org_attestation_present()) {
+            CBOR_CHECK(org_attestation_chain(&mapEncoder2));
+        } else {
+            CBOR_CHECK(cbor_encoder_create_array(&mapEncoder2, &arrEncoder, 1));
+            CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_cert), file_get_size(ef_cert)));
+            CBOR_CHECK(cbor_encoder_close_container(&mapEncoder2, &arrEncoder));
+        }
     }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
 

@@ -19,6 +19,7 @@
 #include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
+#include "org_attestation.h"
 #include "random.h"
 #include "files.h"
 #include "hid/ctap_hid.h"
@@ -86,12 +87,14 @@ int cmd_register(void) {
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    uint32_t stored_certdev_size = file_get_size(cert);
+    const uint8_t *att_cert = file_get_data(cert);
+    size_t stored_certdev_size = file_get_size(cert);
+    if (org_attestation_present() && org_attestation_leaf(&att_cert, &stored_certdev_size)) return SW_EXEC_ERROR();
     if (stored_certdev_size == 0 || stored_certdev_size > CTAP_MAX_ATT_CERT_SIZE) {
         return SW_EXEC_ERROR();
     }
     uint16_t ef_certdev_size = (uint16_t)stored_certdev_size;
-    memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(cert), ef_certdev_size);
+    memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, att_cert, ef_certdev_size);
     uint8_t hash[32], sign_base[1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE + KEY_HANDLE_LEN + CTAP_EC_POINT_SIZE];
     sign_base[0] = CTAP_REGISTER_HASH_ID;
     memcpy(sign_base + 1, req->appId, CTAP_APPID_SIZE);
@@ -104,7 +107,7 @@ int cmd_register(void) {
     }
     mbedtls_ecdsa_init(&key);
     uint8_t key_dev[32] = {0};
-    ret = u2f_load_root(key_dev);
+    ret = org_attestation_present() ? org_attestation_key(key_dev) : u2f_load_root(key_dev);
     if (ret != PICOKEYS_OK) {
         return SW_EXEC_ERROR();
     }

@@ -21,6 +21,7 @@
 #endif
 #include "hid/ctap_hid.h"
 #include "ctap.h"
+#include "org_attestation.h"
 #include "fido.h"
 #include "usb.h"
 #include "apdu.h"
@@ -75,7 +76,11 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
             else if (data[0] == CTAP_SELECTION) {
                 return cbor_selection();
             }
-            else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41) {
+            else if (data[0] == 0x41) {
+                int ret = org_attestation_vendor(data + 1, len - 1);
+                return ret == -1 ? cbor_cred_mgmt(data + 1, len - 1) : ret;
+            }
+            else if (data[0] == CTAP_CREDENTIAL_MGMT) {
                 return cbor_cred_mgmt(data + 1, len - 1);
             }
             else if (data[0] == CTAP_CONFIG) {

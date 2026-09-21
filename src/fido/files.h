@@ -26,6 +26,7 @@
 #define EF_U2F_CERT     0xCE02
 #define EF_EE_DEV       0xCE00
 #define EF_EE_DEV_EA    0xCE01
+#define EF_ORG_ATTESTATION 0xCE05
 #define EF_VAULT_KEY    0xCE03
 #define EF_VAULT_LABEL  0xCE04
 #define EF_COUNTER      0xC000

@@ -6,7 +6,7 @@
 #include "led/led.h"
 
 uint8_t PICO_PRODUCT = 0; // Custom combined firmware; no claim to be an upstream product
-uint8_t PICO_VERSION_MAJOR = 0;
+uint8_t PICO_VERSION_MAJOR = 8;
 uint8_t PICO_VERSION_MINOR = 1;
 
 static file_entry_t system_files[] = {

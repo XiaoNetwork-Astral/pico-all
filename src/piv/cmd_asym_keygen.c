@@ -65,7 +65,7 @@ int cmd_asym_keygen(void) {
     else {
         key_cert = key_ref + 0xC08B;
     }
-    if (a80.data[0] == PIV_ALGO_RSA1024 || a80.data[0] == PIV_ALGO_RSA2048 || a80.data[0] == PIV_ALGO_RSA3072) {
+    if (a80.data[0] == PIV_ALGO_RSA1024 || a80.data[0] == PIV_ALGO_RSA2048 || a80.data[0] == PIV_ALGO_RSA3072 || a80.data[0] == PIV_ALGO_RSA4096) {
         printf("KEYPAIR RSA\r\n");
         tlv_ctx_t a81 = {0};
         tlv_find_tag(&aac, 0x81, &a81);
@@ -74,7 +74,7 @@ int cmd_asym_keygen(void) {
         }
         mbedtls_rsa_context rsa;
         mbedtls_rsa_init(&rsa);
-        int exponent = 65537, nlen = a80.data[0] == PIV_ALGO_RSA1024 ? 1024 : a80.data[0] == PIV_ALGO_RSA2048 ? 2048 : 3072;
+        int exponent = 65537, nlen = (int)piv_rsa_modulus_size(a80.data[0]) * 8;
         if (tlv_len(&a81)) {
             exponent = (int)tlv_get_uint(&a81);
         }

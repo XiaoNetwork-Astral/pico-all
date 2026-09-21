@@ -20,6 +20,7 @@
 #include "fido.h"
 #include "ctap2_cbor.h"
 #include "ctap.h"
+#include "org_attestation.h"
 #if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
@@ -39,6 +40,7 @@ static bool fido_reset_should_clear(uint16_t fid) {
         case EF_U2F_CERT:
         case EF_EE_DEV:
         case EF_EE_DEV_EA:
+        case EF_ORG_ATTESTATION:
         case EF_VAULT_KEY:
         case EF_VAULT_LABEL:
         case EF_COUNTER:
@@ -129,6 +131,7 @@ int cbor_reset(void) {
     if (fido_reset_storage() != PICOKEYS_OK) {
         return CTAP2_ERR_PROCESSING;
     }
+    org_attestation_reset_channel();
     init_fido();
 #ifdef DEFAULT_MCUV_NOT_REQUIRED
     set_opts(get_opts() | FIDO2_OPT_MCUV_NOTRQD);

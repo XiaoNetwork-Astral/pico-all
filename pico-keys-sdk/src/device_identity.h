@@ -7,7 +7,7 @@
 #define PICO_ALL_MANUFACTURER "Pico All"
 #endif
 #ifndef PICO_ALL_PRODUCT
-#define PICO_ALL_PRODUCT "Pico All"
+#define PICO_ALL_PRODUCT "FIDO ALL"
 #endif
 
 static inline const char *device_product_name(void) {

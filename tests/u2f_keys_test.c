@@ -170,3 +170,9 @@ int main(void) {
     mbedtls_ecp_keypair_free(&original); mbedtls_ecp_keypair_free(&loaded);
     puts("PASS independent U2F root, locked FIDO2 isolation, legacy PIN gate, integrity and reset");
 }
+
+// This fixture has no organisation identity; those paths have their own wire tests.
+bool org_attestation_present(void) { return false; }
+int org_attestation_key(uint8_t key[32]) { (void)key; abort(); }
+int org_attestation_leaf(const uint8_t **der, size_t *len) { (void)der; (void)len; abort(); }
+void org_attestation_reset_channel(void) {}

@@ -12,7 +12,9 @@ Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/
 - Local firmware signing, verified updates and mode switching with one Python script.
 - Optional Secure Boot, OTP device-root protection and permanent signing-key lock.
 
-Protocol and security flows have been tested on RP2350-One (A2). End-to-end compatibility with browsers and other client applications is still being validated.
+Protocol and security flows have been tested on RP2350-One (A2). End-to-end compatibility with browsers and other client applications is still being validated. PicoForge 0.9.0 still needs a client update to expose Pico All's PIV, OpenPGP and organisation attestation pages.
+
+Organisation attestation supports local key/certificate import and removal without enabling Enterprise Attestation. A FIDO reset clears both kinds of attestation configuration along with FIDO credentials; it does not undo Secure Boot or OTP locks.
 
 ## Download and install
 

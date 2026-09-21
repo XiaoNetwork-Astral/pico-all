@@ -41,6 +41,9 @@ uint8_t (*get_version_minor)(void) = NULL;
 #define CTAPHID_KEEPALIVE_CANCEL_STATUS 0x2D
 static bool hid_cbor_active = false;
 static bool hid_cancel_pending = false;
+static CTAPHID_FRAME busy_response;
+static bool busy_response_pending = false;
+static bool busy_response_inflight = false;
 
 static usb_buffer_t *hid_rx = NULL, *hid_tx = NULL;
 
@@ -228,6 +231,12 @@ static void send_hid_report(uint8_t report_id) {
 void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_t len) {
     //printf("report_complete %d %d %d\n", instance, len, send_buffer_size[instance]);
     if (instance == ITF_HID_CTAP && len == 64) {
+        // A busy reply belongs to another request, not the worker's TX buffer.
+        if (busy_response_inflight) {
+            busy_response_inflight = false;
+            last_write_result[instance] = WRITE_SUCCESS;
+            return;
+        }
 #ifdef ESP_PLATFORM
         taskENTER_CRITICAL(&mutex);
 #endif
@@ -373,6 +382,23 @@ int driver_process_usb_packet_hid(uint16_t read) {
                 last_cmd == CTAPHID_CBOR && incoming->cid == last_req.cid) {
                 hid_cancel_pending = true;
                 cancel_button = true;
+            }
+            hid_rx[ITF_HID_CTAP].r_ptr += HID_RPT_SIZE;
+            if (hid_rx[ITF_HID_CTAP].r_ptr >= hid_rx[ITF_HID_CTAP].w_ptr) {
+                hid_rx[ITF_HID_CTAP].r_ptr = hid_rx[ITF_HID_CTAP].w_ptr = 0;
+            }
+            return 0;
+        }
+        // Keep the worker's request/response and presence wait intact. INIT
+        // must not call card_exit() while that worker is waiting on core0.
+        if (hid_cbor_active) {
+            if (FRAME_TYPE(incoming) == TYPE_INIT && !busy_response_pending) {
+                memset(&busy_response, 0, sizeof(busy_response));
+                busy_response.cid = incoming->cid;
+                busy_response.init.cmd = CTAPHID_ERROR;
+                busy_response.init.bcntl = 1;
+                busy_response.init.data[0] = CTAP1_ERR_CHANNEL_BUSY;
+                busy_response_pending = true;
             }
             hid_rx[ITF_HID_CTAP].r_ptr += HID_RPT_SIZE;
             if (hid_rx[ITF_HID_CTAP].r_ptr >= hid_rx[ITF_HID_CTAP].w_ptr) {
@@ -606,6 +632,8 @@ int driver_process_usb_packet_hid(uint16_t read) {
             else if (apdu_sent == 2) {
                 card_start(ITF_HID, cbor_thread);
                 hid_cbor_active = true;
+                // RX storage is reused when another client opens a channel.
+                ctap_req = &last_req;
             }
             usb_send_event(EV_CMD_AVAILABLE);
         }
@@ -693,6 +721,14 @@ void hid_task(void) {
     }
     if (proc_pkt == 0) {
         driver_process_usb_nopacket_hid();
+    }
+    if (busy_response_pending && last_write_result[ITF_HID_CTAP] != WRITE_PENDING) {
+        busy_response_inflight = true;
+        if (driver_write_hid(ITF_HID_CTAP, CONST_BYTE_ARRAY((const uint8_t *)&busy_response, 64)) > 0) {
+            busy_response_pending = false;
+        } else {
+            busy_response_inflight = false;
+        }
     }
     uint32_t now_ms = board_millis();
     if (now_ms - last_status_poll_ms >= status_poll_interval_ms) {

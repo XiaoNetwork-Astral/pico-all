@@ -159,11 +159,11 @@ int x509_create_cert(void *pk_ctx, uint8_t algo, uint8_t slot, bool attestation,
     mbedtls_ecdsa_context actx; // attestation key
     mbedtls_pk_init(&skey);
     mbedtls_pk_init(&ikey);
-    if (algo == PIV_ALGO_RSA1024 || algo == PIV_ALGO_RSA2048 || algo == PIV_ALGO_RSA3072) {
-        mbedtls_pk_setup(&skey, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+    if (algo == PIV_ALGO_RSA1024 || algo == PIV_ALGO_RSA2048 || algo == PIV_ALGO_RSA3072 || algo == PIV_ALGO_RSA4096) {
+        skey.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_RSA);
     }
     else if (algo == PIV_ALGO_ECCP256 || algo == PIV_ALGO_ECCP384) {
-        mbedtls_pk_setup(&skey, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+        skey.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY);
     }
     skey.pk_ctx = pk_ctx;
     mbedtls_x509write_crt_set_subject_key(&ctx, &skey);
@@ -175,7 +175,7 @@ int x509_create_cert(void *pk_ctx, uint8_t algo, uint8_t slot, bool attestation,
         file_t *ef_key = file_search_by_fid(EF_PIV_KEY_ATTESTATION, NULL, SPECIFY_EF);
         mbedtls_ecdsa_init(&actx);
         load_private_key_ecdsa(&actx, ef_key, false);
-        mbedtls_pk_setup(&ikey, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+        ikey.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY);
         ikey.pk_ctx = &actx;
         mbedtls_x509write_crt_set_issuer_key(&ctx, &ikey);
         uint8_t ver[] = {PIV_VERSION_MAJOR, PIV_VERSION_MINOR, 0};
