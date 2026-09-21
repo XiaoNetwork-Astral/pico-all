@@ -104,21 +104,39 @@ void led_blinking_task(void) {
         }
         blink_active = false;
     }
-    // Ordinary requests retain the idle indication and breathing phase.
+    // Colour overrides retain the prompt timing and breathing phase.
+    uint8_t configured_color = LED_COLOR_CYAN;
+    uint32_t configured_brightness = MAX_BTNESS;
+    bool configured_steady = false;
+    int configured_slot = mode == MODE_PROCESSING ? 1 : mode == MODE_MOUNTED ? 0 :
+                          mode == MODE_BUTTON ? 2 : mode == MODE_UPDATE ? 3 : -1;
+#if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
+    if (configured_slot >= 0 && phy_data.led_status_present) {
+        configured_color = phy_data.led_status[2 + configured_slot * 2];
+        configured_brightness = (phy_data.led_status[3 + configured_slot * 2] * MAX_BTNESS + 127u) / 255u;
+        configured_steady = phy_data.led_status[1] != 0;
+    } else
+#endif
+    {
+        configured_color = mode == MODE_PROCESSING || mode == MODE_MOUNTED ?
+            LED_COLOR_CYAN : (mode & LED_COLOR_MASK) >> LED_COLOR_SHIFT;
+        configured_brightness = mode == MODE_PROCESSING ? MAX_BTNESS :
+            (mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT;
+    }
+    (void)configured_slot;
     if (mode == MODE_PROCESSING) mode = MODE_MOUNTED;
     if (mode == MODE_MOUNTED) {
         // Two-second smooth breathing; short host polling preserves its phase.
         uint32_t phase = (((now - breath_started) / 10u) * 10u) % 2000u;
         float ramp = (float)(phase < 1000u ? 1000u - phase : phase - 1000u) / 1000.0f;
         float progress = ramp * ramp * (3.0f - 2.0f * ramp);
-        led_render(LED_COLOR_GREEN, MAX_BTNESS, progress);
+        led_render(configured_color, configured_brightness, configured_steady ? 1.0f : progress);
         return;
     }
     uint32_t on_ms = (mode & LED_ON_MASK) >> LED_ON_SHIFT;
     uint32_t off_ms = (mode & LED_OFF_MASK) >> LED_OFF_SHIFT;
     bool on = on_ms != 0 && (off_ms == 0 || (now - mode_started) % (on_ms + off_ms) < on_ms);
-    led_render((mode & LED_COLOR_MASK) >> LED_COLOR_SHIFT,
-               (mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT, on);
+    led_render(configured_color, configured_brightness, on);
 }
 
 void led_off_all(void) {

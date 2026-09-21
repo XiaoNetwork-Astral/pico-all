@@ -8,6 +8,9 @@
 #define TIME_H
 static uint32_t now;
 static uint32_t board_millis(void) { return now; }
+#define TEST_LED_CONFIG
+#include "picokeys.h"
+phy_data_t phy_data;
 #include "../pico-keys-sdk/src/led/led.c"
 
 static uint8_t color;
@@ -26,7 +29,7 @@ static void mode(uint32_t m, uint32_t t) { led_set_mode(m); tick(t); }
 int main(void) {
     led_driver = &sink;
     mode(MODE_MOUNTED, 100);
-    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(color == LED_COLOR_CYAN && brightness == MAX_BTNESS);
     assert(output_progress == 1.0f);
     float previous = output_progress;
     for (uint32_t t = 120; t <= 1100; t += 20) {
@@ -50,13 +53,13 @@ int main(void) {
     mode(MODE_MOUNTED, 2600);
     assert(output_progress == midpoint);
     tick(10000);
-    assert(color == LED_COLOR_GREEN);
+    assert(color == LED_COLOR_CYAN);
     mode(MODE_PROCESSING, 20000);
-    assert(color == LED_COLOR_GREEN);
+    assert(color == LED_COLOR_CYAN);
     tick(20149);
-    assert(color == LED_COLOR_GREEN);
+    assert(color == LED_COLOR_CYAN);
     tick(20150);
-    assert(color == LED_COLOR_GREEN);
+    assert(color == LED_COLOR_CYAN);
 
     // A presence request starts visibly on, independent of clock phase.
     mode(MODE_BUTTON, 20793);
@@ -79,19 +82,20 @@ int main(void) {
     tick(22540);
     assert(color == LED_COLOR_OFF);
     tick(22720);
-    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(color == LED_COLOR_CYAN && brightness == MAX_BTNESS);
 
     led_blink_n_times(3, LED_COLOR_GREEN, 180, 180);
     tick(23000);
+    assert(color == LED_COLOR_GREEN); // Success remains distinct from cyan idle.
     mode(MODE_BUTTON, 23001);
     assert(color == LED_COLOR_YELLOW);
     mode(MODE_MOUNTED, 23002);
-    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(color == LED_COLOR_CYAN && brightness == MAX_BTNESS);
     led_blink_n_times(1, LED_COLOR_RED, 180, 180);
     mode(MODE_SUSPENDED, 23003);
     assert(color == LED_COLOR_OFF);
     mode(MODE_MOUNTED, 23004);
-    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(color == LED_COLOR_CYAN && brightness == MAX_BTNESS);
 
     mode(MODE_BUTTON, UINT32_MAX - 100);
     tick(198);
@@ -101,7 +105,7 @@ int main(void) {
     mode(MODE_MOUNTED, 500);
     mode(MODE_PROCESSING, 510);
     mode(MODE_MOUNTED, 650);
-    assert(color == LED_COLOR_GREEN && brightness == MAX_BTNESS);
+    assert(color == LED_COLOR_CYAN && brightness == MAX_BTNESS);
     mode(MODE_NOT_MOUNTED, 700);
     assert(color == LED_COLOR_MAGENTA);
     tick(900);
@@ -114,6 +118,22 @@ int main(void) {
     tick(4000);
     assert(color == LED_COLOR_BLUE && output_progress == 1.0f);
     led_off_all();
+    assert(color == LED_COLOR_OFF);
+    const uint8_t custom[] = {1, 1, LED_COLOR_CYAN, 255, LED_COLOR_MAGENTA, 128,
+                              LED_COLOR_RED, 255, LED_COLOR_WHITE, 255};
+    memcpy(phy_data.led_status, custom, sizeof(custom));
+    phy_data.led_status_present = true;
+    mode(MODE_MOUNTED, 5000);
+    assert(color == LED_COLOR_CYAN && output_progress == 1.0f);
+    mode(MODE_PROCESSING, 5500);
+    assert(color == LED_COLOR_MAGENTA && brightness == 8);
+    mode(MODE_BUTTON, 5600);
+    assert(color == LED_COLOR_RED);
+    tick(5900);
+    assert(color == LED_COLOR_OFF); // steady option must not suppress prompt flashing
+    mode(MODE_UPDATE, 6000);
+    assert(color == LED_COLOR_WHITE);
+    mode(MODE_SUSPENDED, 6100);
     assert(color == LED_COLOR_OFF);
     puts("PASS LED breathing, polling continuity, prompt priority, timing and clock wrap");
 }

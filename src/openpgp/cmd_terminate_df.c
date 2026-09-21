@@ -76,6 +76,24 @@ static bool openpgp_terminate_clear_dynamic(file_t *file, void *ctx) {
 }
 
 static int openpgp_terminate_clear_storage(void) {
+    file_t *pw_status = file_search_by_fid(EF_PW_PRIV, NULL, SPECIFY_EF);
+    file_t *pw_retries = file_search_by_fid(EF_PW_RETRIES, NULL, SPECIFY_EF);
+    if (!pw_status || !pw_retries) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    uint8_t status[9], retries[7];
+    size_t status_size = file_get_size(pw_status), retries_size = file_get_size(pw_retries);
+    if ((status_size != 7 && status_size != 9) ||
+        retries_size < 4 || retries_size > sizeof(retries)) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    memcpy(status, file_get_data(pw_status), status_size);
+    memcpy(retries, file_get_data(pw_retries), retries_size);
+    const uint8_t pgp_status[] = {1, 127, 127, 127, 3, 0, 3};
+    const uint8_t pgp_retries[] = {1, 3, 3, 3};
+    memcpy(status, pgp_status, sizeof(pgp_status));
+    memcpy(retries, pgp_retries, sizeof(pgp_retries));
+    // Remaining bytes belong to PIV or its shared policy; preserve them.
     openpgp_terminate_clear_context_t context = {
         .value = PICOKEYS_OK,
         .metadata = PICOKEYS_OK,
@@ -108,6 +126,12 @@ static int openpgp_terminate_clear_storage(void) {
         }
     }
 
+    if (context.value == PICOKEYS_OK && context.metadata == PICOKEYS_OK) {
+        context.value = file_put_data(pw_retries, CONST_BYTE_ARRAY(retries, retries_size));
+        if (context.value == PICOKEYS_OK) {
+            context.value = file_put_data(pw_status, CONST_BYTE_ARRAY(status, status_size));
+        }
+    }
     flash_commit();
     file_initialize_flash(false);
     scan_files_openpgp();

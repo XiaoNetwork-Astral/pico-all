@@ -165,3 +165,13 @@ target_compile_options(hid_busy_test PRIVATE -ffunction-sections -fdata-sections
 target_link_options(hid_busy_test PRIVATE -Wl,--gc-sections)
 add_test(NAME hid_busy_request_isolation COMMAND hid_busy_test)
 set_tests_properties(hid_busy_request_isolation PROPERTIES TIMEOUT 15)
+
+add_executable(phy_led_test phy_led_test.c)
+target_compile_definitions(phy_led_test PRIVATE ENABLE_EMULATION)
+target_include_directories(phy_led_test PRIVATE
+    ../pico-keys-sdk/src/otp
+    ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/compat
+    ../pico-keys-sdk/third-party/mbedtls/include)
+target_compile_options(phy_led_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(phy_led_test PRIVATE -Wl,--gc-sections)
+add_test(NAME phy_status_light_roundtrip COMMAND phy_led_test)

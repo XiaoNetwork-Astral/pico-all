@@ -80,6 +80,12 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
         }
     }
 
+    // Always advertise the supported extension and its effective defaults.
+    static const uint8_t defaults[10] = {1, 0, 6, 255, 6, 255, 4, 255, 3, 255};
+    *p++ = PHY_LED_STATUS;
+    *p++ = 10;
+    memcpy(p, phy->led_status_present ? phy->led_status : defaults, 10);
+    p += 10;
     data->len += (size_t)(p - start);
     return PICOKEYS_OK;
 }
@@ -166,6 +172,14 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                         phy->led_order_present = true;
                     }
                 }
+                break;
+            case PHY_LED_STATUS:
+                if (tlen != 10 || v[0] != 1 || v[1] > 1) return PICOKEYS_WRONG_DATA;
+                for (int i = 0; i < 4; i++) {
+                    if (v[2 + i * 2] > 7) return PICOKEYS_WRONG_DATA;
+                }
+                memcpy(phy->led_status, v, 10);
+                phy->led_status_present = true;
                 break;
             default:
                 break;

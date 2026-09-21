@@ -21,6 +21,6 @@
 int cmd_version_openpgp(void) {
     res_APDU[res_APDU_size++] = PIPGP_VERSION_MAJOR;
     res_APDU[res_APDU_size++] = PIPGP_VERSION_MINOR;
-    res_APDU[res_APDU_size++] = 0x0;
+    res_APDU[res_APDU_size++] = 0x1; /* Reset restores OpenPGP retries without changing PIV. */
     return SW_OK();
 }

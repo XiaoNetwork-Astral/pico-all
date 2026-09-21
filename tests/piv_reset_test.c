@@ -107,6 +107,10 @@ int main(void) {
     assert(cmd_reset() != 0x9000 && initialized == 0);
     assert(file_has_data(file_search(EF_DEK_PWPIV)));
     setup();
+    // Reproduce the standard reset flow: both OpenPGP PINs have been blocked.
+    file_get_data(file_search(EF_PW_PRIV))[4] = 0;
+    file_get_data(file_search(EF_PW_PRIV))[6] = 0;
+    has_pw3 = false;
     uint8_t before_status[9], before_retries[6];
     memcpy(before_status, file_get_data(file_search(EF_PW_PRIV)), 9);
     memcpy(before_retries, file_get_data(file_search(EF_PW_RETRIES)), 6);
@@ -115,8 +119,18 @@ int main(void) {
     expect_records(pgp_ids, sizeof(pgp_ids)/sizeof(*pgp_ids), false);
     assert(file_has_data(file_search(0xd19c)) && file_has_data(file_search(0xd49c)));
     assert(!file_has_data(file_search(0xd1d1)) && !file_has_data(file_search(0xd4d1)));
-    assert(memcmp(file_get_data(file_search(EF_PW_PRIV)), before_status, 9) == 0);
-    assert(memcmp(file_get_data(file_search(EF_PW_RETRIES)), before_retries, 6) == 0);
+    const uint8_t pgp_status[] = {1, 127, 127, 127, 3, 0, 3};
+    assert(memcmp(file_get_data(file_search(EF_PW_PRIV)), pgp_status, 7) == 0);
+    assert(memcmp(file_get_data(file_search(EF_PW_PRIV)) + 7, before_status + 7, 2) == 0);
+    const uint8_t pgp_retries[] = {1, 3, 3, 3};
+    assert(memcmp(file_get_data(file_search(EF_PW_RETRIES)), pgp_retries, 4) == 0);
+    assert(memcmp(file_get_data(file_search(EF_PW_RETRIES)) + 4, before_retries + 4, 2) == 0);
     assert(vault_piv == 0 && vault_pgp == 1 && pgp_scans == 1);
-    puts("PASS PIV/OpenPGP reset isolation, retry preservation and reset preconditions");
+    setup(); fail_delete = EF_CH_NAME;
+    memcpy(before_status, file_get_data(file_search(EF_PW_PRIV)), 9);
+    assert(cmd_terminate_df() != 0x9000);
+    assert(memcmp(file_get_data(file_search(EF_PW_PRIV)), before_status, 9) == 0);
+    setup(); file_search(EF_PW_PRIV)->data[0] = 6;
+    assert(cmd_terminate_df() != 0x9000 && deleted == 0 && vault_pgp == 0);
+    puts("PASS PIV/OpenPGP reset isolation, blocked-PIN recovery and failure handling");
 }

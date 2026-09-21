@@ -341,7 +341,14 @@ static int cmd_write(void) {
             return SW_CONDITIONS_NOT_SATISFIED();
         }
 #ifndef ENABLE_EMULATION
-        int ret = phy_unserialize_data(CONST_BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc), &phy_data);
+        phy_data_t updated;
+        int ret = phy_unserialize_data(CONST_BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc), &updated);
+        if (ret != PICOKEYS_OK) return SW_WRONG_DATA();
+        if (!updated.led_status_present && phy_data.led_status_present) {
+            memcpy(updated.led_status, phy_data.led_status, sizeof(updated.led_status));
+            updated.led_status_present = true;
+        }
+        phy_data = updated;
         if (ret == PICOKEYS_OK) {
             if (phy_save() != PICOKEYS_OK) {
                 return SW_EXEC_ERROR();
