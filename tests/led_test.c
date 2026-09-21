@@ -166,5 +166,29 @@ int main(void) {
     assert(color == LED_COLOR_RED);
     mode(MODE_MOUNTED, 7902);
     assert(color == LED_COLOR_CYAN);
-    puts("PASS LED defaults, notification colour/brightness, prompt priority, breathing and timing");
+    // Nuke confirmation overrides configured colours, steady idle and notifications.
+    led_set_nuke_phase(LED_NUKE_CONFIRM);
+    mode(MODE_BUTTON, 10000);
+    assert(color == LED_COLOR_RED && output_progress == 1.0f);
+    tick(10500);
+    assert(color == LED_COLOR_RED && output_progress > 0.49f && output_progress < 0.51f);
+    tick(11000);
+    assert(color == LED_COLOR_OFF && output_progress == 0.0f);
+    tick(12000);
+    assert(color == LED_COLOR_RED && output_progress == 1.0f);
+    led_notify(LED_NOTIFY_SUCCESS, 3, 100, 100);
+    led_set_nuke_phase(LED_NUKE_UPDATE);
+    mode(MODE_UPDATE, 12001); // USB's normal update mode must not turn it blue.
+    tick(12501);
+    assert(color == LED_COLOR_RED && output_progress == 1.0f);
+    // Cancellation/timeout clears the override for later ordinary operations.
+    led_set_nuke_phase(LED_NUKE_NONE);
+    mode(MODE_MOUNTED, 12502);
+    assert(color == LED_COLOR_CYAN);
+    phy_data.led_status_present = false;
+    mode(MODE_BUTTON, 13000);
+    assert(color == LED_COLOR_YELLOW);
+    mode(MODE_UPDATE, 14000);
+    assert(color == LED_COLOR_BLUE);
+    puts("PASS LED defaults, Nuke confirmation/execution, prompt isolation and timing");
 }

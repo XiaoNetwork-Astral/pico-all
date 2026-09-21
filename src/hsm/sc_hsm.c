@@ -917,6 +917,7 @@ int load_private_key_ecdh(mbedtls_ecp_keypair *ctx, file_t *fkey, uint16_t opera
     return load_private_key_ec(ctx, fkey, operation, internal_firmware);
 }
 
+#define INS_GET_PIN_METADATA        0xF7
 #define INS_VERIFY                  0x20
 #define INS_MSE                     0x22
 #define INS_CHANGE_PIN              0x24
@@ -951,6 +952,7 @@ static const cmd_t cmds[] = {
     { INS_READ_BINARY, cmd_read_binary },
     { INS_READ_BINARY_ODD, cmd_read_binary },
     { INS_VERIFY, hsm_cmd_verify },
+    { INS_GET_PIN_METADATA, hsm_cmd_get_pin_metadata },
     { INS_RESET_RETRY, hsm_cmd_reset_retry },
     { INS_CHALLENGE, hsm_cmd_challenge },
     { INS_INITIALIZE, cmd_initialize },

@@ -25,6 +25,11 @@
 led_driver_t *led_driver = NULL;
 
 static volatile uint32_t led_mode = MODE_NOT_MOUNTED;
+static volatile led_nuke_phase_t nuke_phase = LED_NUKE_NONE;
+
+void led_set_nuke_phase(led_nuke_phase_t phase) {
+    nuke_phase = phase;
+}
 
 static volatile bool blink_pending = false;
 static volatile uint8_t blink_count = 0;
@@ -91,7 +96,9 @@ void led_blinking_task(void) {
     static uint32_t blink_started, active_on, active_off, active_brightness;
     static uint8_t active_count, active_color;
     uint32_t now = board_millis();
-    uint32_t mode = led_mode;
+    led_nuke_phase_t phase = nuke_phase;
+    uint32_t mode = phase == LED_NUKE_CONFIRM ? MODE_NUKE_CONFIRM :
+                    phase == LED_NUKE_UPDATE ? MODE_NUKE_UPDATE : led_mode;
     if (!breath_initialized) {
         breath_started = now;
         breath_initialized = true;
@@ -101,7 +108,7 @@ void led_blinking_task(void) {
         mode_started = now;
     }
     // Presence, update and USB state take priority over notifications.
-    if (mode == MODE_BUTTON || mode == MODE_NOT_MOUNTED || mode == MODE_SUSPENDED || mode == MODE_UPDATE) {
+    if (mode == MODE_BUTTON || mode == MODE_NOT_MOUNTED || mode == MODE_SUSPENDED || mode == MODE_UPDATE || phase != LED_NUKE_NONE) {
         blink_pending = false;
         blink_active = false;
     }
@@ -145,9 +152,9 @@ void led_blinking_task(void) {
     }
     (void)configured_slot;
     if (mode == MODE_PROCESSING) mode = MODE_MOUNTED;
-    if (mode == MODE_MOUNTED) {
+    if (mode == MODE_MOUNTED || mode == MODE_NUKE_CONFIRM) {
         // Two-second smooth breathing; short host polling preserves its phase.
-        uint32_t phase = (((now - breath_started) / 10u) * 10u) % 2000u;
+        uint32_t phase = (((now - (mode == MODE_NUKE_CONFIRM ? mode_started : breath_started)) / 10u) * 10u) % 2000u;
         float ramp = (float)(phase < 1000u ? 1000u - phase : phase - 1000u) / 1000.0f;
         float progress = ramp * ramp * (3.0f - 2.0f * ramp);
         led_render(configured_color, configured_brightness, configured_steady ? 1.0f : progress);

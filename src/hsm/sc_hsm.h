@@ -142,6 +142,7 @@ extern int hsm_cmd_select(void);
 extern int cmd_list_keys(void);
 extern int cmd_read_binary(void);
 extern int hsm_cmd_verify(void);
+extern int hsm_cmd_get_pin_metadata(void);
 extern int hsm_cmd_reset_retry(void);
 extern int hsm_cmd_challenge(void);
 extern bool pka_challenge_pending(void);

@@ -175,3 +175,14 @@ target_include_directories(phy_led_test PRIVATE
 target_compile_options(phy_led_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
 target_link_options(phy_led_test PRIVATE -Wl,--gc-sections)
 add_test(NAME phy_status_light_roundtrip COMMAND phy_led_test)
+
+
+add_executable(hsm_pin_metadata_test hsm_pin_metadata_test.c ../src/hsm/cmd_verify.c)
+target_compile_definitions(hsm_pin_metadata_test PRIVATE ENABLE_EMULATION)
+target_include_directories(hsm_pin_metadata_test PRIVATE
+    ../src/hsm ../pico-keys-sdk/src ../pico-keys-sdk/src/fs
+    ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/usb/emulation ../pico-keys-sdk/src/compat
+    ../pico-keys-sdk/third-party/mbedtls/include)
+target_compile_options(hsm_pin_metadata_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(hsm_pin_metadata_test PRIVATE -Wl,--gc-sections)
+add_test(NAME hsm_read_only_pin_metadata COMMAND hsm_pin_metadata_test)

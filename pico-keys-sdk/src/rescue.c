@@ -205,9 +205,9 @@ int rescue_migrate_keydev(void) {
     return ret == PICOKEYS_OK ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
 }
 
-static bool rescue_require_user_presence(void) {
+static uint32_t rescue_user_presence_event(void) {
 #ifdef ENABLE_EMULATION
-    return true;
+    return EV_BUTTON_PRESSED;
 #else
     uint32_t timeout_seconds = button_timeout_seconds();
     if (timeout_seconds == 0) timeout_seconds = 30;
@@ -216,8 +216,12 @@ static bool rescue_require_user_presence(void) {
     do {
         queue_remove_blocking(&usb_to_card_q, &event);
     } while (event != EV_BUTTON_PRESSED && event != EV_BUTTON_TIMEOUT && event != EV_BUTTON_CANCELLED);
-    return event == EV_BUTTON_PRESSED;
+    return event;
 #endif
+}
+
+static bool rescue_require_user_presence(void) {
+    return rescue_user_presence_event() == EV_BUTTON_PRESSED;
 }
 
 static int cmd_keydev_sign(void) {
@@ -537,11 +541,22 @@ static int cmd_reboot_bootsel(void) {
         return SW_WRONG_LENGTH();
     }
 
-    if (P1(apdu) == 0x1) {
-        // Reboot to BOOTSEL
-        if (!rescue_require_user_presence()) {
+    if (P1(apdu) == 0x1 || P1(apdu) == 0x2) {
+        // P1=2 identifies a Nuke request; it still requires the same physical button.
+        if (P2(apdu) != 0) return SW_INCORRECT_P1P2();
+        bool nuke = P1(apdu) == 0x2;
+        if (nuke) led_set_nuke_phase(LED_NUKE_CONFIRM);
+        uint32_t presence = rescue_user_presence_event();
+        if (presence != EV_BUTTON_PRESSED) {
+            if (nuke) {
+                led_set_nuke_phase(LED_NUKE_NONE);
+                // The Nuke prompt suppresses normal notifications while waiting.
+                if (presence == EV_BUTTON_TIMEOUT)
+                    led_notify(LED_NOTIFY_TIMEOUT, 2, 180, 180);
+            }
             return SW_CONDITIONS_NOT_SATISFIED();
         }
+        if (nuke) led_set_nuke_phase(LED_NUKE_UPDATE);
         uint32_t val = EV_RESET;
         queue_add_blocking(&card_to_usb_q, &val);
     }

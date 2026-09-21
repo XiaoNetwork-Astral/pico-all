@@ -58,12 +58,17 @@ enum  {
     MODE_UPDATE      = (MAX_BTNESS << LED_BTNESS_SHIFT) | (LED_COLOR_BLUE << LED_COLOR_SHIFT) | LED_ON_NO_BLINK,
     MODE_BUTTON      = (MAX_BTNESS << LED_BTNESS_SHIFT) | (LED_COLOR_YELLOW << LED_COLOR_SHIFT) | (300 << LED_ON_SHIFT) | (300 << LED_OFF_SHIFT),
 
+    MODE_NUKE_CONFIRM = (MAX_BTNESS << LED_BTNESS_SHIFT) | (LED_COLOR_RED << LED_COLOR_SHIFT) | (2000 << LED_ON_SHIFT),
+    MODE_NUKE_UPDATE  = (MAX_BTNESS << LED_BTNESS_SHIFT) | (LED_COLOR_RED << LED_COLOR_SHIFT) | LED_ON_NO_BLINK,
+
     MODE_ALWAYS_ON   = UINT32_MAX,
     MODE_ALWAYS_OFF  = 0
 };
 
 extern void led_set_mode(uint32_t mode);
 extern uint32_t led_get_mode(void);
+typedef enum { LED_NUKE_NONE, LED_NUKE_CONFIRM, LED_NUKE_UPDATE } led_nuke_phase_t;
+extern void led_set_nuke_phase(led_nuke_phase_t phase);
 typedef enum {
     LED_NOTIFY_SUCCESS,
     LED_NOTIFY_TIMEOUT,
