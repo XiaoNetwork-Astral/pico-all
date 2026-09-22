@@ -243,7 +243,7 @@ static int pin_authorize(CborValue *outer, uint8_t cmd) {
 }
 static int confirm_presence(void) {
     uint32_t timeout = button_timeout_seconds();
-    int r = wait_button_pressed_timeout(timeout ? timeout : 30u);
+    int r = wait_button_pressed_timeout(timeout ? timeout : BUTTON_DEFAULT_TIMEOUT_SECONDS);
     return r == 1 ? CTAP2_ERR_USER_ACTION_TIMEOUT : r ? CTAP2_ERR_OPERATION_DENIED : 0;
 }
 static int authorize(CborValue *outer,uint8_t cmd) {
@@ -273,7 +273,13 @@ int org_attestation_vendor(const uint8_t *data, size_t len) {
     int r = 0;
     if (cmd == 7 || cmd == 8 || cmd == 14) {
         uint64_t target=UINT64_MAX;uint8_t challenge[32];size_t n=sizeof(challenge);
-        if (cbor_value_is_valid(&params[2])) return CTAP1_ERR_INVALID_PARAMETER;
+        // Checkpoint option 2 requests a signed snapshot under the same PIN/touch
+        // authorization. No authorization is cached for later commands.
+        bool snapshot = false;
+        if (cbor_value_is_valid(&params[2])) {
+            if (cmd != 8 || !cbor_value_is_boolean(&params[2]) ||
+                cbor_value_get_boolean(&params[2], &snapshot)) return CTAP1_ERR_INVALID_PARAMETER;
+        }
         if(cmd==14 && (!uint_value(&params[1],&target) || target>2))return CTAP1_ERR_INVALID_PARAMETER;
         if(cmd==8 && bytes(&params[1],challenge,&n))return CTAP1_ERR_INVALID_PARAMETER;
         if(!(cmd==14 && target==2)) {
@@ -282,6 +288,15 @@ int org_attestation_vendor(const uint8_t *data, size_t len) {
             if(r)return r;
         }
         if(cmd==7)r=audit_export(&encoder);
+        else if(cmd==8 && snapshot) {
+            CborEncoder map;
+            r=cbor_encoder_create_map(&encoder,&map,2);
+            if(!r)r=cbor_encode_uint(&map,1);
+            if(!r)r=audit_export(&map);
+            if(!r)r=cbor_encode_uint(&map,2);
+            if(!r)r=audit_checkpoint(&map,challenge,n);
+            if(!r)r=cbor_encoder_close_container(&encoder,&map);
+        }
         else if(cmd==8)r=audit_checkpoint(&encoder,challenge,n);
         else {
             if(target==1) {
@@ -291,9 +306,12 @@ int org_attestation_vendor(const uint8_t *data, size_t len) {
                 audit_append(AUDIT_CONFIG,0,NULL,0);
                 if(audit_set_enabled(false))return CTAP2_ERR_PROCESSING;
             }
-            CborEncoder map;r=cbor_encoder_create_map(&encoder,&map,1);
+            CborEncoder map;r=cbor_encoder_create_map(&encoder,&map,target==2?2:1);
             if(!r)r=cbor_encode_uint(&map,1);
             if(!r)r=cbor_encode_boolean(&map,audit_enabled());
+            // Read-only capability discovery for clients with legacy fallback.
+            if(!r && target==2)r=cbor_encode_uint(&map,2);
+            if(!r && target==2)r=cbor_encode_boolean(&map,true);
             if(!r)r=cbor_encoder_close_container(&encoder,&map);
         }
     } else if (cmd == 1) {

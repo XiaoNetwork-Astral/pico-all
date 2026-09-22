@@ -32,6 +32,8 @@ typedef enum {
     BUTTON_EV_NONE,
 } button_event_t;
 
+#define BUTTON_DEFAULT_TIMEOUT_SECONDS 60u
+
 extern void button_wait_start(void);
 extern void button_wait_poll(void);
 extern volatile uint32_t button_pressed_duration;

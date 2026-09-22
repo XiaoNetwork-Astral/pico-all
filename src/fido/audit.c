@@ -5,6 +5,7 @@
 // Reset folds and scrubs details. Full Flash erasure removes the journal normally.
 #include "picokeys.h"
 #include "audit.h"
+#include "pico_time.h"
 #include "file.h"
 #include "flash.h"
 #include "serial.h"
@@ -82,7 +83,13 @@ static int append_one(uint8_t ev,uint8_t aux,const uint8_t *detail,size_t len) {
   wr32(record+5,start+1);
  }
  uint8_t *e=slot(next);memset(e,0,AUDIT_ENTRY_LEN);
- wr32(e,next);wr32(e+4,board_millis());e[8]=ev;e[9]=aux;
+ wr32(e,next);e[8]=ev;e[9]=aux;
+ // Wall time is supplied by the connected host; the signed chain binds the value,
+ // not the accuracy of that host's clock. Never manufacture dates before sync.
+ time_t now = has_set_rtc() ? get_rtc_time() : 0;
+ if(now >= 1577836800 && (uint64_t)now <= UINT32_MAX) {
+  wr32(e+4,(uint32_t)now);e[8]|=AUDIT_WALL_CLOCK;
+ } else wr32(e+4,board_millis());
  if(detail && len)memcpy(e+10,detail,len>8?8:len);
  wr32(record+1,next+1);return 0;
 }
@@ -96,7 +103,7 @@ static void append(uint8_t ev,uint8_t aux,const uint8_t *detail,size_t len,bool 
   for(uint32_t n=next;n>start;) {
    uint8_t *e=slot(--n);
    if(ev==AUDIT_CONFIG_WRITE && n!=next-1)break;
-   if(e[8]==ev) {
+   if((e[8]&~AUDIT_WALL_CLOCK)==ev) {
     unsigned offset=ev==AUDIT_CONFIG_WRITE?10:18;
     uint16_t count=(uint16_t)e[offset]|((uint16_t)e[offset+1]<<8);
     if(count!=UINT16_MAX)++count;

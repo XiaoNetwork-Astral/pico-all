@@ -8,7 +8,7 @@
 
 uint8_t PICO_PRODUCT = 0; // Custom combined firmware; no claim to be an upstream product
 uint8_t PICO_VERSION_MAJOR = 8;
-uint8_t PICO_VERSION_MINOR = 1;
+uint8_t PICO_VERSION_MINOR = 2;
 
 static file_entry_t system_files[] = {
     {.fid = 0x3f00, .parent = 0xff, .type = FILE_TYPE_DF},

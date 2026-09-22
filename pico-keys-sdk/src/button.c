@@ -39,6 +39,7 @@ static bool req_button_pending = false;
 static bool async_button_wait = false;
 static bool async_button_pressed = false;
 static uint32_t async_button_started = 0;
+static uint32_t async_button_pressed_at = 0;
 static uint32_t async_button_timeout = 0;
 static uint32_t async_button_led_mode = MODE_MOUNTED;
 #endif
@@ -121,7 +122,7 @@ void button_wait_start_timeout(uint32_t timeout_seconds) {
         return;
     }
     if (button_timeout == 0) {
-        button_timeout = 30000;
+        button_timeout = BUTTON_DEFAULT_TIMEOUT_SECONDS * 1000u;
     }
     signal_user_presence_request_data_t data = {
         .timeout = button_timeout / 1000,
@@ -131,26 +132,27 @@ void button_wait_start_timeout(uint32_t timeout_seconds) {
     async_button_wait = true;
     async_button_pressed = picok_board_button_read();
     async_button_started = board_millis();
+    async_button_pressed_at = async_button_started;
     async_button_timeout = button_timeout;
     async_button_led_mode = led_get_mode();
     req_button_pending = true;
     led_set_mode(MODE_BUTTON);
 }
 
-void button_wait_poll(void) {
+static void button_wait_poll_state(bool pressed, uint32_t now) {
     if (!async_button_wait) {
         return;
     }
-    bool pressed = picok_board_button_read();
-    uint32_t now = board_millis();
     if (!async_button_pressed && pressed) {
         async_button_pressed = true;
+        async_button_pressed_at = now;
     }
     button_event_t result = BUTTON_EV_NONE;
     if (cancel_button) {
         result = BUTTON_EV_CANCELLED;
     }
-    else if (async_button_started + async_button_timeout < now || (async_button_pressed && async_button_started + 15000 < now)) {
+    else if ((uint32_t)(now - async_button_started) >= async_button_timeout ||
+             (async_button_pressed && (uint32_t)(now - async_button_pressed_at) >= 15000u)) {
         result = BUTTON_EV_TIMEOUT;
     }
     else if (async_button_pressed && !pressed) {
@@ -184,6 +186,10 @@ void button_wait_poll(void) {
     else {
         signal_emit(SIGNAL_USER_PRESENCE_CANCELLED);
     }
+}
+
+void button_wait_poll(void) {
+    button_wait_poll_state(picok_board_button_read(), board_millis());
 }
 
 #endif

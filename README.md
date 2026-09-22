@@ -2,78 +2,57 @@
 
 English | [中文](README.zh.md)
 
-Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/PIV and SmartCard-HSM in one firmware.
+Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/PIV, SmartCard-HSM and OATH/OTP in one firmware.
 
 ## Features
 
-- FIDO2 passkeys and U2F authentication with physical button confirmation.
-- OpenPGP and PIV smart-card keys, plus SmartCard-HSM.
-- OATH TOTP/HOTP accounts and programmable OTP slots.
-- Local firmware signing, verified updates and mode switching with one Python script.
-- Optional Secure Boot, OTP device-root protection and permanent signing-key lock.
-- Optional Audit logging with signed checkpoints in development builds; disabled by default.
-
-Protocol and security flows have been tested on RP2350-One (A2). [PicoForge All](https://github.com/BlueFunny19/picoforge-all) provides desktop management for this firmware; full end-to-end client compatibility is still being validated.
-
-Organisation attestation supports local key/certificate import and removal without enabling Enterprise Attestation. A FIDO reset clears both kinds of attestation configuration along with FIDO credentials; it does not undo Secure Boot or OTP locks.
+- Passkeys, smart-card keys, one-time passwords and programmable OTP slots
+- Desktop management with [PicoForge All](https://github.com/BlueFunny19/picoforge-all)
+- Optional security-event logging with signed checkpoints and calendar timestamps
+- Per-status light colours, brightness and breathing or steady mode
+- Local firmware signing, verified updates and optional Secure Boot / Secure Lock
+- Device button confirmation with a default 60-second window
 
 ## Download and install
 
-Download `pico_all.uf2`, `firmware.py` and `requirements.txt` from [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases). **We publish unsigned firmware only. Generate your own signing key locally and sign each release before installing it.**
+Download `pico_all-8.2-unsigned.uf2` from [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases/latest).
 
-Install Python 3.10+ and [picotool 2.3.1+](https://github.com/raspberrypi/picotool/releases), with `picotool` on PATH. In the download folder:
+> [!WARNING]
+> Published firmware is unsigned; sign it yourself before installation. You can use **PicoForge All → Firmware** with your local signing key. A device with Secure Boot enabled requires its original trusted key; keep that key backed up offline.
+
+1. Install [picotool 2.3.1+](https://github.com/raspberrypi/picotool/releases) and make it available on PATH, or set the `PICOTOOL` environment variable
+2. Open PicoForge All → Firmware, select the UF2 and your secp256k1 PEM signing key, then select **Sign** and **Flash**
+3. When the light flashes, press and release the device button (BOOTSEL)
+
+For a blank board, hold BOOTSEL while connecting it. Signing a file does not enable Secure Boot. Credentials from unrelated firmware are not migrated.
+
+For command-line use, download `firmware.py` and `requirements.txt` from this repository:
 
 ```sh
 python -m pip install -r requirements.txt
-python firmware.py sign pico_all.uf2 -k .private/my-key.pem --new-key
-python firmware.py flash pico_all.signed.uf2
+python firmware.py sign pico_all-8.2-unsigned.uf2 -k .private/my-key.pem --new-key
+python firmware.py --help
 ```
 
-Use `--new-key` only for your first key. Keep the private key local and backed up offline; never upload, sync or commit it. A board with Secure Boot already enabled needs its registered key, not a newly generated one. Signing a file does not enable Secure Boot.
+Use `--new-key` only when creating your first key. Use the same key for later updates. Ordinary Pico All updates preserve stored credentials; reset and erase operations do not.
 
-For a new board, hold BOOT while connecting it once to enter BOOTSEL. Once Pico All is installed, the script requests update mode automatically: press and release BOOTSEL when the LED flashes yellow. Existing credentials from other firmware are not migrated.
+## Usage
 
-## Update and manage
+PicoForge All manages credentials, PINs, status lights, event logs and firmware. FIDO has no factory PIN; create one before managing stored passkeys. Event recording is off by default; enable it on the Audit page. Events recorded before clock synchronization show an unknown date.
 
-Sign later releases with the **same key**, then flash:
-
-```sh
-python firmware.py sign pico_all.uf2 -k .private/my-key.pem
-python firmware.py flash pico_all.signed.uf2
-```
-
-| Command | Action |
+| Status | Default colour |
 | --- | --- |
-| `python firmware.py info` | Read installed firmware information; stays in BOOTSEL |
-| `python firmware.py device bootsel` | Enter update mode with button confirmation |
-| `python firmware.py device reboot` | Return to normal firmware without flashing |
-| `python firmware.py security status -s SERIAL` | Read security settings; requests BOOTSEL if needed |
-| `python firmware.py --help` | Show commands and examples |
+| Ready / processing | Cyan |
+| Button confirmation | Yellow |
+| Firmware update | Blue |
+| Success | Green |
+| Timeout / error | Red |
 
-With multiple boards, add `-s SERIAL`. Updates read back the written firmware before restarting and preserve existing Pico All credentials.
-
-## LED
-
-| Light | Meaning |
-| --- | --- |
-| Green, slow breathing | Idle; brightness 1, about a 2-second cycle |
-| Yellow, fast flashing | Press and release BOOTSEL to confirm |
-| Blue | Firmware update mode |
-| Red flashes | Confirmation timed out |
-
-New U2F credentials work after reconnecting without first unlocking a FIDO2 PIN session. Older U2F credentials may need re-registration for this behavior.
-
-## Optional security setup
-
-`firmware.py security` provides staged setup: **load-key → harden → prepare → enable → prove → lock**. Read `python firmware.py security --help` and each stage's `--help` before proceeding. Every stage requires `-s SERIAL`; writes preview changes unless you add `--apply` and confirm.
-
-Prepare deletes credentials, PINs and settings. Continue directly to Enable without rebooting the application between them. Follow the power-cycle checks at the other stages. OTP device roots initialize only after protected signed boot and remain across updates. Lock permanently fixes the trusted signing key; future updates still work with that key.
-
-RP2350 A2 has [hardware security errata](https://www.raspberrypi.com/news/rp2350-a4-rp2354-and-a-new-hacking-challenge/) that these settings cannot fix.
+Secure Boot and Secure Lock are permanent hardware settings. Review the security setup in PicoForge All before applying them; erasing Flash cannot undo them. RP2350 A2 hardware limitations still apply.
 
 ## Build
 
-Requires Git, an Arm toolchain, Pico SDK 2.3.1, CMake 3.31+ and Ninja. Dependencies are fetched on the first build.
+Requires an Arm toolchain, Pico SDK 2.3.1, CMake 3.31+ and Ninja.
 
 ```sh
 git clone https://github.com/XiaoNetwork-Astral/pico-all.git
@@ -82,32 +61,8 @@ cmake -S . -B build -G Ninja -DPICO_SDK_PATH=/path/to/pico-sdk
 cmake --build build
 ```
 
-Output: unsigned `build/pico_all.uf2`. The default target is RP2350-One.
+Output: unsigned `build/pico_all.uf2`; the default board is RP2350-One. Protocol and storage tests are in `tests/`.
 
 ## License and credits
 
-[AGPL-3.0](LICENSE). Based on [Pico FIDO](https://github.com/polhenarejos/pico-fido), [Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp), [Pico HSM](https://github.com/polhenarejos/pico-hsm) and [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk) by Pol Henarejos and contributors. Original copyright notices are preserved; pinned revisions are listed in [upstream.json](upstream.json).
-
-
-### Status-light configuration
-
-Pico All advertises its effective light settings in the PHY response. TLV 0x10
-(version 1, steady flag, four colour/brightness pairs) controls Ready, Processing,
-Button confirmation and Firmware update. TLV 0x11 (version 1 followed by three
-colour/brightness pairs) controls Success, Timeout and Error notifications.
-TLV 0x12 contains version 1 and a seven-bit steady-mode mask in the same order
-(four base states, then Success/Timeout/Error). A clear bit selects breathing;
-a set bit selects steady light. Each state is independent. Notification durations
-remain bounded by their existing count and interval, then return to the normal
-state. Presence and firmware update take priority over notifications. Nuke keeps
-its dedicated red confirmation/execution indication.
-
-Colours use the SDK palette (0–7); brightness uses 0–255. Defaults are cyan for
-Ready/Processing, yellow for confirmation, blue for update, green for success,
-and red for timeout/error. On migration, an old steady flag keeps Ready and
-Processing steady; other states breathe. Per-state configuration replaces the
-legacy global brightness and dimmable settings.
-
-Older four-state configurations remain valid. Writes that omit an extension
-preserve its stored settings, and successful writes still require physical
-confirmation.
+[AGPL-3.0](LICENSE). Based on [Pico FIDO](https://github.com/polhenarejos/pico-fido), [Pico OpenPGP](https://github.com/polhenarejos/pico-openpgp), [Pico HSM](https://github.com/polhenarejos/pico-hsm) and [Pico Keys SDK](https://github.com/polhenarejos/pico-keys-sdk) by Pol Henarejos and contributors. Pinned revisions are listed in [upstream.json](upstream.json).

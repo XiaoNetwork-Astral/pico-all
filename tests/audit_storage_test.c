@@ -5,6 +5,11 @@
 #undef main
 #include "../src/fido/audit.h"
 
+static bool test_clock_set;
+static time_t test_clock = 1780000000;
+bool has_set_rtc(void) { return test_clock_set; }
+time_t get_rtc_time(void) { return test_clock; }
+
 uint8_t pico_serial_hash[32] = {4, 5, 6};
 
 static size_t export_journal(uint8_t *out, size_t capacity) {
@@ -40,6 +45,18 @@ int main(void) {
     assert(audit_enabled());
     size_t after_len = export_journal(after, sizeof(after));
     assert(before_len == after_len && !memcmp(before, after, before_len));
+
+    // New records carry calendar time without rewriting the legacy signed bytes.
+    test_clock_set = true;
+    audit_append(AUDIT_PIN_SET, 0, NULL, 0);
+    const uint8_t *record = file_get_data(file_search(0xc100));
+    assert((record[41+8] & AUDIT_WALL_CLOCK) == 0);
+    const uint8_t *last = record + 41 + 2 * AUDIT_ENTRY_LEN;
+    assert(last[8] == (AUDIT_PIN_SET | AUDIT_WALL_CLOCK));
+    uint32_t timestamp = (uint32_t)last[4] | ((uint32_t)last[5]<<8) | ((uint32_t)last[6]<<16) | ((uint32_t)last[7]<<24);
+    assert(timestamp == (uint32_t)test_clock);
+    file_scan_flash();
+    assert(file_get_data(file_search(0xc100))[41+2*AUDIT_ENTRY_LEN+8] == (AUDIT_PIN_SET | AUDIT_WALL_CLOCK));
 
     assert(audit_scrub() == 0);
     CborParser parser;

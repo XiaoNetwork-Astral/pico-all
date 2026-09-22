@@ -1940,6 +1940,20 @@ int ecdsa_sign(mbedtls_ecp_keypair *ctx, const uint8_t *data, size_t data_len, u
     return r;
 }
 
+// Pico All metadata. Only reports matches against public factory constants;
+// custom PIN values and verifiers are never returned, and retries are untouched.
+static int cmd_pin_defaults(void) {
+    if (P1(apdu) != 0 || P2(apdu) != 0) return SW_WRONG_P1P2();
+    if (apdu.nc != 0) return SW_WRONG_LENGTH();
+    static const uint8_t pw1[] = "123456", pw3[] = "12345678";
+    res_APDU[0] = 1;
+    res_APDU[1] =
+        (pin_is_factory_default(file_search_by_fid(EF_PW1, NULL, SPECIFY_EF), pw1, sizeof(pw1) - 1) ? 1 : 0) |
+        (pin_is_factory_default(file_search_by_fid(EF_PW3, NULL, SPECIFY_EF), pw3, sizeof(pw3) - 1) ? 2 : 0);
+    res_APDU_size = 2;
+    return SW_OK();
+}
+
 #define INS_VERIFY          0x20
 #define INS_MSE             0x22
 #define INS_CHANGE_PIN      0x24
@@ -1959,6 +1973,7 @@ int ecdsa_sign(mbedtls_ecp_keypair *ctx, const uint8_t *data, size_t data_len, u
 #define INS_TERMINATE_DF    0xE6
 #define INS_VERSION         0xF1
 #define INS_VAULT           0xF2
+#define INS_PIN_DEFAULTS    0xF7
 
 static const cmd_t cmds[] = {
     { INS_GET_DATA, cmd_get_data },
@@ -1980,6 +1995,7 @@ static const cmd_t cmds[] = {
     { INS_GET_NEXT_DATA, cmd_get_next_data },
     { INS_GET_BULK_DATA, cmd_get_bulk_data },
     { INS_VAULT, cmd_openpgp_vault },
+    { INS_PIN_DEFAULTS, cmd_pin_defaults },
     { 0x00, NULL }
 };
 

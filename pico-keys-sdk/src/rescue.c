@@ -213,7 +213,7 @@ static uint32_t rescue_user_presence_event(void) {
     return EV_BUTTON_PRESSED;
 #else
     uint32_t timeout_seconds = button_timeout_seconds();
-    if (timeout_seconds == 0) timeout_seconds = 30;
+    if (timeout_seconds == 0) timeout_seconds = BUTTON_DEFAULT_TIMEOUT_SECONDS;
     uint32_t event = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
     queue_add_blocking(&card_to_usb_q, &event);
     do {

@@ -160,6 +160,37 @@ class OrgAttestationTest(unittest.TestCase):
         self.assertEqual(self.command({1: 11}), (0, {1: False}))
         self.assertEqual(self.command({1: 10})[0], 0x30)
 
+    def test_signed_audit_snapshot_uses_one_confirmation(self):
+        self.assertEqual(self.command({1: 14, 2: {1: 2}}), (0, {1: False, 2: True}))
+        self.assertEqual(self.command({1: 14, 2: {1: 1}})[0], 0)
+        for protocol in (None, 1, 2):
+            self.line('pin %d' % (protocol is not None))
+            before = int(self.line('counters').split()[1])
+            challenge = os.urandom(16)
+            request = self.request(8, {1: challenge, 2: True}, protocol)
+            status, result = self.command(request)
+            self.assertEqual(status, 0)
+            self.assertEqual(int(self.line('counters').split()[1]) - before, 1)
+            log, checkpoint = result[1], result[2]
+            head = log[3]
+            self.assertEqual(len(log[4]), (log[2] - log[1]) * 20)
+            for offset in range(0, len(log[4]), 20):
+                head = hashlib.sha256(head + log[4][offset:offset + 20]).digest()
+            self.assertEqual(head, checkpoint[1])
+            self.assertEqual(log[2], checkpoint[2])
+            key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), checkpoint[4])
+            key.verify(checkpoint[3], b'RSK-AUDIT-CKPT-v1' + head + checkpoint[2].to_bytes(4, 'little') + challenge, ec.ECDSA(hashes.SHA256()))
+        self.line('pin 1')
+        before = self.line('counters')
+        self.assertEqual(self.command({1: 8, 2: {1: challenge, 2: True}})[0], 0x36)
+        self.assertEqual(self.line('counters'), before)
+        self.line('touch 1')
+        self.assertEqual(self.command(self.request(8, {1: challenge, 2: True}, 2))[0], 0x2f)
+        self.line('touch 0')
+        before = self.line('counters')
+        self.assertEqual(self.command(self.request(8, {1: challenge, 2: 'invalid'}, 2))[0], 2)
+        self.assertEqual(self.line('counters'), before)
+
     def test_parse_errors_do_not_write(self):
         before = self.line('counters').split()[0]
         for raw in ('41a201090109', '41a1010b00', '41a2010902a0', '41a2010a02a0'):

@@ -192,9 +192,11 @@ target_link_options(phy_led_test PRIVATE -Wl,--gc-sections)
 add_test(NAME phy_status_light_roundtrip COMMAND phy_led_test)
 
 
-add_executable(hsm_pin_metadata_test hsm_pin_metadata_test.c ../src/hsm/cmd_verify.c)
+add_executable(hsm_pin_metadata_test hsm_pin_metadata_test.c ../src/hsm/cmd_verify.c ../pico-keys-sdk/src/crypto_utils.c)
+target_link_libraries(hsm_pin_metadata_test PRIVATE u2f_test_crypto)
 target_compile_definitions(hsm_pin_metadata_test PRIVATE ENABLE_EMULATION)
 target_include_directories(hsm_pin_metadata_test PRIVATE
+    ../pico-keys-sdk/src/otp ../pico-keys-sdk/src/rng
     ../src/hsm ../pico-keys-sdk/src ../pico-keys-sdk/src/fs
     ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/usb/emulation ../pico-keys-sdk/src/compat
     ../pico-keys-sdk/third-party/mbedtls/include)
@@ -213,3 +215,15 @@ target_compile_options(hsm_file_list_test PRIVATE -ffunction-sections -fdata-sec
 target_link_options(hsm_file_list_test PRIVATE -Wl,--gc-sections)
 add_test(NAME hsm_visible_file_listing COMMAND hsm_file_list_test)
 set_tests_properties(hsm_visible_file_listing PROPERTIES TIMEOUT 15)
+
+add_executable(openpgp_pin_defaults_test openpgp_pin_defaults_test.c ../pico-keys-sdk/src/crypto_utils.c)
+target_link_libraries(openpgp_pin_defaults_test PRIVATE u2f_test_crypto)
+target_compile_definitions(openpgp_pin_defaults_test PRIVATE ENABLE_EMULATION)
+target_include_directories(openpgp_pin_defaults_test PRIVATE
+    ../src/openpgp ../pico-keys-sdk/src ../pico-keys-sdk/src/fs
+    ../pico-keys-sdk/src/otp ../pico-keys-sdk/src/rng ../pico-keys-sdk/src/usb
+    ../pico-keys-sdk/src/usb/emulation ../pico-keys-sdk/src/compat)
+set_property(TARGET openpgp_pin_defaults_test PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+target_compile_options(openpgp_pin_defaults_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(openpgp_pin_defaults_test PRIVATE -Wl,--gc-sections)
+add_test(NAME openpgp_read_only_pin_defaults COMMAND openpgp_pin_defaults_test)

@@ -26,6 +26,11 @@ static size_t journal_sizes[2];
 static uint16_t namespace_id = 1;
 static const uint8_t test_root[32] = {1,2,3};
 const uint8_t *otp_key_2 = test_root;
+static bool test_clock_set;
+static time_t test_clock = 1780000000;
+bool has_set_rtc(void) { return test_clock_set; }
+time_t get_rtc_time(void) { return test_clock; }
+
 uint8_t pico_serial_hash[32] = {4,5,6};
 uint16_t file_namespace_current(void) { return namespace_id; }
 void file_namespace_select(uint16_t id) { namespace_id = id; }
@@ -66,7 +71,7 @@ int random_fill_iterator(void *ctx, unsigned char *out, size_t n) {
 }
 int random_fill_buffer(byte_array_t b) { return random_fill_iterator(NULL, b.data, b.len); }
 uint32_t button_timeout_seconds(void) { return 0; }
-int wait_button_pressed_timeout(uint32_t seconds) { assert(seconds == 30); ++touches; return touch_result; }
+int wait_button_pressed_timeout(uint32_t seconds) { assert(seconds == 60); ++touches; return touch_result; }
 int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *mac) {
     uint8_t expected[32];
     int r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, expected);

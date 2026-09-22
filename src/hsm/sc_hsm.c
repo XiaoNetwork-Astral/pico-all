@@ -287,7 +287,7 @@ bool hsm_wait_button_pressed(void) {
     bool require_button = opts & HSM_OPT_BOOTSEL_BUTTON;
     if (require_button) {
         uint32_t timeout_seconds = button_timeout_seconds();
-        if (timeout_seconds == 0) timeout_seconds = 30;
+        if (timeout_seconds == 0) timeout_seconds = BUTTON_DEFAULT_TIMEOUT_SECONDS;
         val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
         queue_add_blocking(&card_to_usb_q, &val);
         do{

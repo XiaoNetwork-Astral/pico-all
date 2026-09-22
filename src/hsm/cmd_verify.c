@@ -17,11 +17,26 @@
 
 #include "sc_hsm.h"
 #include "files.h"
+#include "crypto_utils.h"
+#include "mbedtls/constant_time.h"
+
+// Read-only comparison; never calls VERIFY or changes authentication/retries.
+static bool hsm_pin_is_default(const file_t *pin, bool user) {
+    const uint8_t *value = (const uint8_t *)(user ? "123456" : "12345678");
+    uint8_t length = user ? 6 : 8;
+    uint8_t verifier[34] = {length, 1};
+    uint32_t size = file_get_size(pin);
+    if (!file_has_data(pin) || (size != 33 && size != 34)) return false;
+    if (size == 33) double_hash_pin(CONST_BYTE_ARRAY(value, length), verifier + 1);
+    else pin_derive_verifier(CONST_BYTE_ARRAY(value, length), verifier + 2);
+    return mbedtls_ct_memcmp(file_get_data(pin), verifier, size) == 0;
+}
 
 // Pico All read-only PIN metadata: version, retries left, retry limit, flags.
-// Flag 0: initialized. Flag 1: factory retry limit (not a default PIN value).
+// P1=0 preserves v1. P1=1 requests v2, adding flag 2: PIN matches the
+// PicoForge reset default. Flags 0/1 remain initialized/factory retry limit.
 int hsm_cmd_get_pin_metadata(void) {
-    if (P1(apdu) != 0 || (P2(apdu) != 0x81 && P2(apdu) != 0x88))
+    if (P1(apdu) > 1 || (P2(apdu) != 0x81 && P2(apdu) != 0x88))
         return SW_WRONG_P1P2();
     if (apdu.nc != 0) return SW_WRONG_LENGTH();
     bool user = P2(apdu) == 0x81;
@@ -33,11 +48,12 @@ int hsm_cmd_get_pin_metadata(void) {
     uint8_t total = file_read_uint8(limit);
     uint8_t remaining = file_read_uint8(left);
     if (total == 0 || remaining > total) return SW_DATA_INVALID();
-    res_APDU[0] = 1;
+    res_APDU[0] = P1(apdu) == 1 ? 2 : 1;
     res_APDU[1] = remaining;
     res_APDU[2] = total;
     res_APDU[3] = (file_read_uint8(pin) != 0 ? 1 : 0) |
                   (total == (user ? 3 : 15) ? 2 : 0);
+    if (P1(apdu) == 1 && hsm_pin_is_default(pin, user)) res_APDU[3] |= 4;
     res_APDU_size = 4;
     return SW_OK();
 }
