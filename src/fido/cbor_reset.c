@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "file.h"
 #include "fido.h"
 #include "ctap2_cbor.h"
@@ -128,7 +129,7 @@ int cbor_reset(void) {
         return CTAP2_ERR_OPERATION_DENIED;
     }
 #endif
-    if (fido_reset_storage() != PICOKEYS_OK) {
+    if (audit_scrub() != 0 || fido_reset_storage() != PICOKEYS_OK) {
         return CTAP2_ERR_PROCESSING;
     }
     org_attestation_reset_channel();
@@ -148,5 +149,6 @@ int cbor_reset(void) {
     //if (!flash_commit_sync(5000u)) {
     //    return CTAP2_ERR_PROCESSING;
     //}
+    audit_append(AUDIT_RESET, 0, NULL, 0);
     return 0;
 }

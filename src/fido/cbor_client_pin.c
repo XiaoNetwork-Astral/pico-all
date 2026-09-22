@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "mbedtls/ecp.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/sha256.h"
@@ -656,6 +657,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             resetPinUvAuthToken();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
+                audit_append(AUDIT_PIN_LOCKOUT, 0, NULL, 0);
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
             }
             if (power_cycle_locked || ++new_pin_mismatches >= 3) {
@@ -665,6 +667,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
                         CBOR_ERROR(CTAP2_ERR_PROCESSING);
                     }
                 }
+                if (!power_cycle_locked) audit_append(AUDIT_PIN_LOCKOUT, 1, NULL, 0);
                 needs_power_cycle = true;
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
             }
@@ -847,6 +850,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             mbedtls_platform_zeroize(dhash, sizeof(dhash));
             if (retries == 0) {
+                audit_append(AUDIT_PIN_LOCKOUT, 0, NULL, 0);
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
             }
             if (power_cycle_locked || ++new_pin_mismatches >= 3) {
@@ -856,6 +860,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
                         CBOR_ERROR(CTAP2_ERR_PROCESSING);
                     }
                 }
+                if (!power_cycle_locked) audit_append(AUDIT_PIN_LOCKOUT, 1, NULL, 0);
                 needs_power_cycle = true;
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
             }
@@ -960,6 +965,8 @@ err:
         }
         return error;
     }
+    if (subcommand == 3) audit_append(AUDIT_PIN_SET, 0, NULL, 0);
+    else if (subcommand == 4) audit_append(AUDIT_PIN_CHANGE, 0, NULL, 0);
     res_APDU_size = (uint16_t)resp_size;
     return 0;
 }

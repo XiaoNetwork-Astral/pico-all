@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include "picokeys.h"
+#include "audit.h"
 #include "serial.h"
 #include "fido.h"
 #include "apdu.h"
@@ -189,6 +190,7 @@ static int cmd_write_config(void) {
     }
     phy_save();
 #endif
+    audit_append(AUDIT_CONFIG_WRITE, 0, NULL, 0);
     return SW_OK();
 }
 

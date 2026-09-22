@@ -2,6 +2,7 @@
 // RS-Key/PicoForge's classical MSE + ATT_IMPORT/CLEAR/STATE wire protocol.
 #include "picokeys.h"
 #include "org_attestation.h"
+#include "audit.h"
 #include "files.h"
 #include "fido.h"
 #include "ctap.h"
@@ -213,9 +214,8 @@ done:
     if (r) org_attestation_reset_channel();
     return r ? CTAP1_ERR_INVALID_PARAMETER : 0;
 }
-static int authorize(CborValue *outer, uint8_t cmd) {
-    if (!channel.ready || channel.cid != ctap_req->cid ||
-        (uint32_t)(board_millis() - channel.started) > 60000u) return CTAP2_ERR_NOT_ALLOWED;
+static int pin_authorize(CborValue *outer, uint8_t cmd) {
+    if (file_has_data(ef_pin) && !cbor_value_is_valid(&outer[4])) return (cmd == 9 || cmd == 10) ? CTAP2_ERR_PIN_AUTH_INVALID : CTAP2_ERR_PUAT_REQUIRED;
     uint64_t protocol = 0; uint8_t mac[32]; size_t mac_len = sizeof(mac);
     if (file_has_data(ef_pin) || cbor_value_is_valid(&outer[3]) || cbor_value_is_valid(&outer[4])) {
         if (!uint_value(&outer[3], &protocol) || (protocol != 1 && protocol != 2) ||
@@ -239,30 +239,64 @@ static int authorize(CborValue *outer, uint8_t cmd) {
         free(payload);
         if (r) return CTAP2_ERR_PIN_AUTH_INVALID;
     }
+    return 0;
+}
+static int confirm_presence(void) {
     uint32_t timeout = button_timeout_seconds();
     int r = wait_button_pressed_timeout(timeout ? timeout : 30u);
     return r == 1 ? CTAP2_ERR_USER_ACTION_TIMEOUT : r ? CTAP2_ERR_OPERATION_DENIED : 0;
+}
+static int authorize(CborValue *outer,uint8_t cmd) {
+    if (!channel.ready || channel.cid != ctap_req->cid ||
+        (uint32_t)(board_millis() - channel.started) > 60000u) return CTAP2_ERR_NOT_ALLOWED;
+    int r=pin_authorize(outer,cmd);return r?r:confirm_presence();
 }
 int org_attestation_vendor(const uint8_t *data, size_t len) {
     CborParser parser; CborValue root, outer[5], params[3]; uint64_t cmd = 0;
     if (cbor_parser_init(data, len, 0, &parser, &root) || fields(root, outer, 5) ||
         !uint_value(&outer[1], &cmd)) return -1;
     bool has_params = cbor_value_is_valid(&outer[2]);
+    if (cmd == 7 && has_params) return -1; // Legacy credMgmtPreview update, including its user map.
     memset(params, 0, sizeof(params));
     for (size_t i = 0; i < 3; ++i) params[i].type = CborInvalidType;
     if (has_params && fields(outer[2], params, 3)) {
-        return cmd >= 9 && cmd <= 11 ? CTAP2_ERR_INVALID_CBOR : -1;
+        return (cmd >= 7 && cmd <= 11) || cmd == 14 ? CTAP2_ERR_INVALID_CBOR : -1;
     }
     // 0x41 is also legacy credMgmtPreview. Only MSE's COSE-map shape is distinct.
     if (cmd == 1 && !cbor_value_is_map(&params[1])) return -1;
-    if (cmd != 1 && cmd != 9 && cmd != 10 && cmd != 11) return -1;
+    if (cmd != 1 && cmd != 7 && cmd != 8 && cmd != 9 && cmd != 10 && cmd != 11 && cmd != 14) return -1;
     CborValue end = root;
     if (cbor_value_advance(&end) || cbor_value_get_next_byte(&end) != data + len)
         return CTAP2_ERR_INVALID_CBOR;
     CborEncoder encoder;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     int r = 0;
-    if (cmd == 1) {
+    if (cmd == 7 || cmd == 8 || cmd == 14) {
+        uint64_t target=UINT64_MAX;uint8_t challenge[32];size_t n=sizeof(challenge);
+        if (cbor_value_is_valid(&params[2])) return CTAP1_ERR_INVALID_PARAMETER;
+        if(cmd==14 && (!uint_value(&params[1],&target) || target>2))return CTAP1_ERR_INVALID_PARAMETER;
+        if(cmd==8 && bytes(&params[1],challenge,&n))return CTAP1_ERR_INVALID_PARAMETER;
+        if(!(cmd==14 && target==2)) {
+            r=pin_authorize(outer,(uint8_t)cmd);
+            if(!r && (cmd!=7 || !file_has_data(ef_pin)))r=confirm_presence();
+            if(r)return r;
+        }
+        if(cmd==7)r=audit_export(&encoder);
+        else if(cmd==8)r=audit_checkpoint(&encoder,challenge,n);
+        else {
+            if(target==1) {
+                if(audit_set_enabled(true))return CTAP2_ERR_PROCESSING;
+                audit_append(AUDIT_CONFIG,1,NULL,0);
+            } else if(target==0) {
+                audit_append(AUDIT_CONFIG,0,NULL,0);
+                if(audit_set_enabled(false))return CTAP2_ERR_PROCESSING;
+            }
+            CborEncoder map;r=cbor_encoder_create_map(&encoder,&map,1);
+            if(!r)r=cbor_encode_uint(&map,1);
+            if(!r)r=cbor_encode_boolean(&map,audit_enabled());
+            if(!r)r=cbor_encoder_close_container(&encoder,&map);
+        }
+    } else if (cmd == 1) {
         if (cbor_value_is_valid(&params[2])) return CTAP1_ERR_INVALID_PARAMETER;
         r = handshake(&params[1], &encoder);
     } else if (cmd == 11) {
@@ -307,6 +341,7 @@ int org_attestation_vendor(const uint8_t *data, size_t len) {
         } else r = file_put_data(record_file(), CONST_BYTE_ARRAY(NULL, 0));
         if (!r && !flash_commit_sync(5000u)) r = PICOKEYS_EXEC_ERROR;
         r = r ? CTAP2_ERR_PROCESSING : 0;
+        if(!r)audit_append(cmd==9?AUDIT_ATT_IMPORT:AUDIT_ATT_CLEAR,0,NULL,0);
 clean:
         org_attestation_reset_channel();
         mbedtls_platform_zeroize(scalar, sizeof(scalar));

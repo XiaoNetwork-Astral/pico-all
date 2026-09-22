@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
@@ -429,6 +430,15 @@ err:
         }
         return error;
     }
+    if (subcommand == 1) audit_append(AUDIT_EA, 0, NULL, 0);
+    else if (subcommand == 2) audit_append(AUDIT_ALWAYS_UV, 0, NULL, 0);
+    else if (subcommand == 3) {
+        uint8_t forced = forceChangePin == ptrue;
+        audit_append(AUDIT_MIN_PIN, (uint8_t)newMinPinLength, &forced, 1);
+    } else if (subcommand == 0xff && vendorCommandId == CTAP_CONFIG_AUT_ENABLE)
+        audit_append(AUDIT_LOCK, 0, NULL, 0);
+    else if (subcommand == 0xff && vendorCommandId == CTAP_CONFIG_AUT_DISABLE)
+        audit_append(AUDIT_UNLOCK, 0, NULL, 0);
     res_APDU_size = (uint16_t)resp_size;
     return 0;
 }

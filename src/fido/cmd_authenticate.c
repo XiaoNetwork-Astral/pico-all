@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
@@ -88,5 +89,6 @@ int cmd_authenticate(void) {
         return SW_EXEC_ERROR();
     }
     res_APDU_size = 1 + 4 + (uint16_t)olen;
+    audit_append(AUDIT_U2F_AUTH, 0, req->appId, 8);
     return SW_OK();
 }

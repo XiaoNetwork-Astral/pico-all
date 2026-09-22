@@ -152,8 +152,9 @@ class OrgAttestationTest(unittest.TestCase):
     def test_legacy_routing_and_reset(self):
         self.assertEqual(self.command({1: 1})[0], 0x7e)
         self.assertEqual(self.command({1: 1}, opcode=0x0a)[0], 0x7e)
-        for subcommand in (2, 3, 4, 5, 6, 7):
+        for subcommand in (2, 3, 4, 5, 6):
             self.assertEqual(self.command({1: subcommand})[0], 0x7e)
+        self.assertEqual(self.command({1: 7, 2: {2: b"credential", 3: {"id": b"user"}}})[0], 0x7e)
         self.install(); self.mse()
         self.assertEqual(self.line('07'), '0')
         self.assertEqual(self.command({1: 11}), (0, {1: False}))

@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "serial.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
@@ -318,6 +319,10 @@ err:
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
         }
         return error;
+    }
+    if (cmd == CTAP_VENDOR_BACKUP) {
+        if (vendorCmd == 1) audit_append(AUDIT_BACKUP_EXPORT, 0, NULL, 0);
+        else if (vendorCmd == 2) audit_append(AUDIT_BACKUP_LOAD, 0, NULL, 0);
     }
     res_APDU_size = (uint16_t)resp_size;
     return 0;

@@ -4,6 +4,7 @@
 #include "apdu.h"
 #include "flash.h"
 #include "led/led.h"
+#include "fido/audit.h"
 
 uint8_t PICO_PRODUCT = 0; // Custom combined firmware; no claim to be an upstream product
 uint8_t PICO_VERSION_MAJOR = 8;
@@ -50,3 +51,5 @@ void tud_suspend_cb(bool remote_wakeup_en) {
     led_set_mode(MODE_SUSPENDED);
 }
 void tud_resume_cb(void) { led_set_mode(MODE_MOUNTED); }
+
+void pico_audit_config_changed(uint8_t target) { audit_append(AUDIT_CONFIG_WRITE, target, NULL, 0); }

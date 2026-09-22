@@ -176,3 +176,7 @@ bool org_attestation_present(void) { return false; }
 int org_attestation_key(uint8_t key[32]) { (void)key; abort(); }
 int org_attestation_leaf(const uint8_t **der, size_t *len) { (void)der; (void)len; abort(); }
 void org_attestation_reset_channel(void) {}
+
+#include "../src/fido/audit.h"
+void audit_append(uint8_t e,uint8_t a,const uint8_t *d,size_t n) {(void)e;(void)a;(void)d;(void)n;}
+int audit_scrub(void) { return 0; }

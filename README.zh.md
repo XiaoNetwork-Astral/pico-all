@@ -11,8 +11,9 @@
 - OATH TOTP/HOTP 账户与可编程 OTP 槽位。
 - 一个 Python 脚本完成本地签名、校验更新和模式切换。
 - 可选的 Secure Boot、OTP 设备根保护与永久签名密钥锁定。
+- 开发版本提供可选 Audit 审计日志与签名检查点；默认关闭
 
-已在 RP2350-One（A2）上验证协议和安全配置流程；浏览器及其他真实客户端的完整兼容性仍在验证中。PicoForge 0.9.0 仍需客户端适配，才能开放 Pico All 的 PIV、OpenPGP 和组织 Attestation 页面。
+已在 RP2350-One（A2）上验证协议和安全配置流程；可通过 [PicoForge All](https://github.com/BlueFunny19/picoforge-all) 管理固件；真实客户端的完整兼容性仍在验证中
 
 组织 Attestation 支持本地导入和清除密钥／证书，无需先启用 Enterprise Attestation。FIDO 重置会同时清除这两类 Attestation 配置及 FIDO 凭据，但不会解除 Secure Boot 或 OTP 锁定。
 

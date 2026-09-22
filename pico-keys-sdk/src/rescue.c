@@ -16,6 +16,9 @@
  */
 
 #include "picokeys.h"
+
+// Optional application hook for successful physical-configuration writes.
+__attribute__((weak)) void pico_audit_config_changed(uint8_t target) { (void)target; }
 #include "serial.h"
 #include "led/led.h"
 #include <time.h>
@@ -361,6 +364,7 @@ static int cmd_write(void) {
             if (phy_save() != PICOKEYS_OK) {
                 return SW_EXEC_ERROR();
             }
+            pico_audit_config_changed(1);
         }
 #endif
     }

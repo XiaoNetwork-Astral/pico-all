@@ -5,9 +5,9 @@
 #include "mbedtls/constant_time.h"
 #include "../src/fido/org_attestation.c"
 
-static file_entry_t entries[2];
+static file_entry_t entries[4];
 file_entry_t *file_entries = entries;
-const file_entry_t *file_last = entries + 2;
+const file_entry_t *file_last = entries + 4;
 file_t *ef_pin = &entries[0].file;
 static uint8_t storage[RECORD_HEADER + CHAIN_MAX];
 static size_t stored;
@@ -20,18 +20,38 @@ struct apdu apdu;
 static uint8_t response[8192], req_frame[8192], response_frame[8192];
 CTAPHID_FRAME *ctap_req = (CTAPHID_FRAME *)req_frame, *ctap_resp = (CTAPHID_FRAME *)response_frame;
 
-uint32_t file_get_size(const file_t *f) { return f == ef_pin ? pin_set : f == &entries[1].file ? stored : 0; }
-bool file_has_data(const file_t *f) { return file_get_size(f) != 0; }
-uint8_t *file_get_data(const file_t *f) { (void)f; return storage; }
-file_t *file_search_by_fid(uint16_t fid, const file_t *parent, uint8_t type) {
-    (void)parent; (void)type;
-    return fid == EF_ORG_ATTESTATION ? &entries[1].file : NULL;
+
+static uint8_t journal_storage[2][2700];
+static size_t journal_sizes[2];
+static uint16_t namespace_id = 1;
+static const uint8_t test_root[32] = {1,2,3};
+const uint8_t *otp_key_2 = test_root;
+uint8_t pico_serial_hash[32] = {4,5,6};
+uint16_t file_namespace_current(void) { return namespace_id; }
+void file_namespace_select(uint16_t id) { namespace_id = id; }
+uint32_t file_get_size(const file_t *f) {
+ if (!f) return 0;
+ return f == ef_pin ? pin_set : f == &entries[1].file ? stored : journal_sizes[f == &entries[2].file ? 0 : 1];
 }
+bool file_has_data(const file_t *f) { return file_get_size(f) != 0; }
+uint8_t *file_get_data(const file_t *f) { return f == &entries[1].file ? storage : journal_storage[f == &entries[2].file ? 0 : 1]; }
+file_t *file_search_by_fid(uint16_t fid, const file_t *parent, uint8_t type) {
+ (void)parent; (void)type;
+ for (unsigned i=0;i<4;i++) if(entries[i].fid == fid) return &entries[i].file;
+ return NULL;
+}
+file_t *file_new(uint16_t fid) { return file_search_by_fid(fid,NULL,0); }
 int file_put_data(file_t *f, const_byte_array_t data) {
-    assert(f == &entries[1].file); assert(data.len <= sizeof(storage));
-    if (fail_write) return PICOKEYS_EXEC_ERROR;
-    if (data.len) memcpy(storage, data.data, data.len);
-    stored = data.len; ++writes; return 0;
+ if (fail_write) return PICOKEYS_EXEC_ERROR;
+ if (f == &entries[1].file) {
+  assert(data.len <= sizeof(storage));if(data.len)memcpy(storage,data.data,data.len);stored=data.len;
+ } else {
+  assert(f == &entries[2].file || f == &entries[3].file);
+  unsigned i=f == &entries[2].file ? 0 : 1;
+  assert(data.len <= sizeof(journal_storage[i]));if(data.len)memcpy(journal_storage[i],data.data,data.len);
+  journal_sizes[i]=data.len;
+ }
+ ++writes;return 0;
 }
 bool flash_commit_sync(uint32_t timeout) { (void)timeout; return !fail_commit; }
 void derive_kbase(uint8_t out[32]) { memset(out, 0x29, 32); }
@@ -75,6 +95,7 @@ void init_fido(void) {}
 
 int main(void) {
     entries[0].fid = EF_PIN; entries[1].fid = EF_ORG_ATTESTATION;
+    entries[2].fid=0xc100;entries[3].fid=0xc101;
     apdu.rdata = response; ctap_req->cid = 7; memset(token, 0x42, 32);
     char line[18000];
     while (fgets(line, sizeof(line), stdin)) {
@@ -88,6 +109,11 @@ int main(void) {
         else if (sscanf(line, "fail %u", &n) == 1) { fail_write = n == 1; fail_commit = n == 2; puts("ok"); }
         else if (sscanf(line, "permission %u", &n) == 1) { paut.permissions = n; puts("ok"); }
         else if (strncmp(line, "expire", 6) == 0) { channel.started -= 61000; puts("ok"); }
+        else if (sscanf(line,"append %u",&n)==1) {
+            for(unsigned i=0;i<n;i++) { uint8_t detail[8]={0}; memcpy(detail,&i,sizeof(i));audit_append(AUDIT_MAKE_CRED,0,detail,8); } puts("ok");
+        }
+        else if (sscanf(line,"run %u",&n)==1) { for(unsigned i=0;i<n;i++)audit_append_run(AUDIT_GET_ASSERT,0,NULL,0);puts("ok"); }
+        else if (strncmp(line,"scrub",5)==0) { printf("%d\n",audit_scrub()); }
         else if (strncmp(line, "counters", 8) == 0) { printf("%u %u\n", writes, touches); }
         else if (strncmp(line, "corrupt", 7) == 0) { assert(stored); storage[45] ^= 1; puts("ok"); }
         else if (strncmp(line, "key", 3) == 0) {

@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
@@ -123,6 +124,7 @@ int cmd_register(void) {
         return SW_EXEC_ERROR();
     }
     res_APDU_size = sizeof(CTAP_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN + ef_certdev_size + (uint16_t)olen;
+    audit_append(AUDIT_U2F_REGISTER, 0, req->appId, 8);
     return SW_OK();
 }
 

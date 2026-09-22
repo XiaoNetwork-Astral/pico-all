@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "cbor_make_credential.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
@@ -871,6 +872,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         dev_state_update(DEV_STATE_CRED_STATE);
     }
     flash_commit();
+    audit_append(AUDIT_MAKE_CRED, 0, rp_id_hash, 8);
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

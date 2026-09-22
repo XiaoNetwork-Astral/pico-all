@@ -16,6 +16,7 @@
  */
 
 #include "picokeys.h"
+#include "audit.h"
 #include "cbor.h"
 #include "ctap.h"
 #if defined(PICO_PLATFORM)
@@ -882,6 +883,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    if (options.up == pfalse) audit_append_run(AUDIT_GET_ASSERT, 0, rp_id_hash, 8);
+    else audit_append(AUDIT_GET_ASSERT, 0, rp_id_hash, 8);
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

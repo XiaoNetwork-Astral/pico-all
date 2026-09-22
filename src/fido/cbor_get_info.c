@@ -78,7 +78,8 @@ int cbor_get_info(void) {
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     uint8_t lfields = 22;
     file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-    bool enterprise_profile = file_has_data(ef_ee_ea) || org_attestation_present();
+    bool enterprise_profile = true; // EA can be enabled before its certificate is installed.
+    (void)ef_ee_ea;
 #ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
         lfields++;
