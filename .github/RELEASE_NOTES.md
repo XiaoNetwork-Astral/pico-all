@@ -1,5 +1,5 @@
 > [!WARNING]
-> This firmware is unsigned. Sign it yourself before installation; you can use **[PicoForge All](https://github.com/BlueFunny19/picoforge-all) → Firmware** with your local signing key. Devices with Secure Boot enabled require their original trusted key.
+> This firmware is unsigned. Sign it yourself before installation; you can use **[PicoForge All](https://github.com/XiaoNetwork-Astral/pico-forge-all) → Firmware** with your local signing key. Devices with Secure Boot enabled require their original trusted key.
 
 Updates:
 
@@ -13,7 +13,7 @@ Updates:
 ---
 
 > [!WARNING]
-> 此固件未签名，需要自行签名后再安装；可使用 **[PicoForge All](https://github.com/BlueFunny19/picoforge-all) → 固件**，选择本地签名密钥进行签名；已开启安全启动的设备必须使用原来的受信任密钥
+> 此固件未签名，需要自行签名后再安装；可使用 **[PicoForge All](https://github.com/XiaoNetwork-Astral/pico-forge-all) → 固件**，选择本地签名密钥进行签名；已开启安全启动的设备必须使用原来的受信任密钥
 
 更新内容：
 

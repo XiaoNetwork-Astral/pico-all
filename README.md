@@ -7,7 +7,7 @@ Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/
 ## Features
 
 - Passkeys, smart-card keys, one-time passwords and programmable OTP slots
-- Desktop management with [PicoForge All](https://github.com/BlueFunny19/picoforge-all)
+- Desktop management with [PicoForge All](https://github.com/XiaoNetwork-Astral/pico-forge-all)
 - Optional security-event logging with signed checkpoints and calendar timestamps
 - Per-status light colours, brightness and breathing or steady mode
 - Local firmware signing, verified updates and optional Secure Boot / Secure Lock

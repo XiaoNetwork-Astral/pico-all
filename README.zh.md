@@ -7,7 +7,7 @@
 ## 功能
 
 - 通行密钥、智能卡密钥、动态口令和可编程 OTP 槽位
-- 使用 [PicoForge All](https://github.com/BlueFunny19/picoforge-all) 管理设备
+- 使用 [PicoForge All](https://github.com/XiaoNetwork-Astral/pico-forge-all) 管理设备
 - 可选安全事件记录，支持签名验证和日历时间
 - 各状态独立设置指示灯颜色、亮度和呼吸／常亮模式
 - 本地固件签名、写入校验，以及可选的安全启动和安全锁定
