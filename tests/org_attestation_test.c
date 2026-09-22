@@ -37,10 +37,14 @@ bool file_has_data(const file_t *f) { return file_get_size(f) != 0; }
 uint8_t *file_get_data(const file_t *f) { return f == &entries[1].file ? storage : journal_storage[f == &entries[2].file ? 0 : 1]; }
 file_t *file_search_by_fid(uint16_t fid, const file_t *parent, uint8_t type) {
  (void)parent; (void)type;
+ for (unsigned i=0;i<2;i++) if(entries[i].fid == fid) return &entries[i].file;
+ return NULL;
+}
+file_t *file_search(uint16_t fid) {
  for (unsigned i=0;i<4;i++) if(entries[i].fid == fid) return &entries[i].file;
  return NULL;
 }
-file_t *file_new(uint16_t fid) { return file_search_by_fid(fid,NULL,0); }
+file_t *file_new(uint16_t fid) { return file_search(fid); }
 int file_put_data(file_t *f, const_byte_array_t data) {
  if (fail_write) return PICOKEYS_EXEC_ERROR;
  if (f == &entries[1].file) {

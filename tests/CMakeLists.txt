@@ -120,6 +120,21 @@ set(attestation_cbor_sources cborparser cborencoder cborencoder_close_container_
     cborparser_dup_string cborerrorstrings)
 list(TRANSFORM attestation_cbor_sources PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/../pico-keys-sdk/third-party/tinycbor/src/")
 list(TRANSFORM attestation_cbor_sources APPEND ".c")
+add_executable(audit_storage_test audit_storage_test.c ../src/app_registry.c
+    ../src/fido/audit.c ../pico-keys-sdk/src/fs/file.c ../pico-keys-sdk/src/fs/flash.c
+    ${attestation_cbor_sources})
+target_link_libraries(audit_storage_test PRIVATE u2f_test_crypto)
+target_compile_definitions(audit_storage_test PRIVATE ENABLE_EMULATION)
+target_include_directories(audit_storage_test PRIVATE
+    ../src/fido ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/rng
+    ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/usb/emulation
+    ../pico-keys-sdk/src/compat ../pico-keys-sdk/src/otp
+    ../pico-keys-sdk/third-party/tinycbor/src)
+target_compile_options(audit_storage_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(audit_storage_test PRIVATE -Wl,--gc-sections)
+add_test(NAME audit_storage_persistence COMMAND audit_storage_test)
+set_tests_properties(audit_storage_persistence PROPERTIES TIMEOUT 15)
+
 add_executable(org_attestation_test org_attestation_test.c ../src/fido/cbor.c ../src/fido/audit.c
     ../src/fido/cbor_reset.c ${attestation_cbor_sources})
 target_link_libraries(org_attestation_test PRIVATE u2f_test_crypto)

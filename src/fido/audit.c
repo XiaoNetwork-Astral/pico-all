@@ -34,7 +34,7 @@ static uint32_t rd32(const uint8_t *p) {
  return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24);
 }
 static void wr32(uint8_t *p, uint32_t n) { for (unsigned i=0;i<4;i++) p[i]=(uint8_t)(n>>(8*i)); }
-static file_t *get_file(uint16_t id) { return file_search_by_fid(id,NULL,SPECIFY_EF); }
+static file_t *get_file(uint16_t id) { return file_search(id); }
 static int put(uint16_t id, const uint8_t *p, size_t n) {
  file_t *f=get_file(id); if (!f) f=file_new(id);
  if (!f || file_put_data(f,CONST_BYTE_ARRAY(p,n))) return -1;
