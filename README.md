@@ -95,12 +95,19 @@ Pico All advertises its effective light settings in the PHY response. TLV 0x10
 (version 1, steady flag, four colour/brightness pairs) controls Ready, Processing,
 Button confirmation and Firmware update. TLV 0x11 (version 1 followed by three
 colour/brightness pairs) controls Success, Timeout and Error notifications.
+TLV 0x12 contains version 1 and a seven-bit steady-mode mask in the same order
+(four base states, then Success/Timeout/Error). A clear bit selects breathing;
+a set bit selects steady light. Each state is independent. Notification durations
+remain bounded by their existing count and interval, then return to the normal
+state. Presence and firmware update take priority over notifications. Nuke keeps
+its dedicated red confirmation/execution indication.
+
 Colours use the SDK palette (0–7); brightness uses 0–255. Defaults are cyan for
 Ready/Processing, yellow for confirmation, blue for update, green for success,
-and red for timeout/error. Notification timing remains unchanged; Error uses
-three 180 ms flashes for internal APDU execution/storage or CTAP processing failures.
-Ordinary discovery responses, such as an absent applet, do not flash an error.
+and red for timeout/error. On migration, an old steady flag keeps Ready and
+Processing steady; other states breathe. Per-state configuration replaces the
+legacy global brightness and dimmable settings.
 
-Older four-state configurations remain valid. Writes that omit either extension
+Older four-state configurations remain valid. Writes that omit an extension
 preserve its stored settings, and successful writes still require physical
 confirmation.

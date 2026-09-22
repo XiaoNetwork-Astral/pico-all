@@ -190,5 +190,36 @@ int main(void) {
     assert(color == LED_COLOR_YELLOW);
     mode(MODE_UPDATE, 14000);
     assert(color == LED_COLOR_BLUE);
+    // Each advertised status chooses its own mode, with no global override.
+    phy_data.led_modes_present = true;
+    const uint32_t modes[] = {MODE_MOUNTED, MODE_PROCESSING, MODE_BUTTON, MODE_UPDATE};
+    for (uint8_t i = 0; i < 4; ++i) {
+        uint32_t start = 16000 + i * 4000;
+        phy_data.led_modes = (uint8_t)(1u << i);
+        mode(modes[i], start); tick(start + 500);
+        assert(output_progress == 1.0f);
+        phy_data.led_modes = 0;
+        tick(start + 600);
+        assert(output_progress > 0.0f && output_progress < 1.0f);
+    }
+    mode(MODE_MOUNTED, 33000);
+    for (uint8_t n = 0; n < 3; ++n) {
+        uint32_t start = 34000 + n * 2000;
+        phy_data.led_modes = (uint8_t)(1u << (4 + n));
+        led_notify((led_notification_t)n, 2, 100, 100);
+        tick(start); tick(start + 100);
+        assert(output_progress == 1.0f);
+        phy_data.led_modes = 0;
+        led_notify((led_notification_t)n, 2, 100, 100);
+        tick(start + 500); tick(start + 550);
+        assert(output_progress > 0.49f && output_progress < 0.51f);
+        mode(MODE_BUTTON, start + 551); // presence interrupts notifications
+        assert(color == LED_COLOR_YELLOW);
+        mode(MODE_MOUNTED, start + 552);
+    }
+    phy_data.led_modes = 0x7F;
+    led_set_nuke_phase(LED_NUKE_CONFIRM);
+    mode(MODE_BUTTON, 41000); tick(41500);
+    assert(color == LED_COLOR_RED && output_progress > 0.49f && output_progress < 0.51f);
     puts("PASS LED defaults, Nuke confirmation/execution, prompt isolation and timing");
 }

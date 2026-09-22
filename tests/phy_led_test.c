@@ -17,7 +17,9 @@ int main(void) {
     assert(output.led_notifications_present);
     const uint8_t notification_defaults[] = {1, 2, 255, 1, 255, 1, 255};
     assert(memcmp(output.led_notifications, notification_defaults, 7) == 0);
+    assert(output.led_modes_present && output.led_modes == 0);
     input = output;
+    input.led_modes = 0x55;
     input.led_notifications[3] = 5;
     input.led_notifications[4] = 128;
     input.led_status[1] = 1;
@@ -29,6 +31,7 @@ int main(void) {
     assert(phy_serialize_data(&input, &buffer) == PICOKEYS_OK);
     assert(phy_unserialize_data(CONST_BYTE_ARRAY(bytes, buffer.len), &output) == PICOKEYS_OK);
     assert(memcmp(input.led_status, output.led_status, 10) == 0);
+    assert(output.led_modes_present && output.led_modes == 0x55);
     assert(output.led_driver == 3 && output.led_order == 4);
     assert(memcmp(input.led_notifications, output.led_notifications, 7) == 0);
     uint8_t legacy[] = {PHY_LED_STATUS, 10, 1, 0, 6, 128, 6, 255, 4, 255, 3, 255};
@@ -46,5 +49,9 @@ int main(void) {
     assert(phy_unserialize_data(CONST_BYTE_ARRAY(bad, sizeof(bad)), &output) == PICOKEYS_WRONG_DATA);
     bad[4] = 2; bad[2] = 2;
     assert(phy_unserialize_data(CONST_BYTE_ARRAY(bad, sizeof(bad)), &output) == PICOKEYS_WRONG_DATA);
+    uint8_t invalid_modes[] = {PHY_LED_MODES, 2, 1, 0x80};
+    assert(phy_unserialize_data(CONST_BYTE_ARRAY(invalid_modes, sizeof(invalid_modes)), &output) == PICOKEYS_WRONG_DATA);
+    invalid_modes[3] = 0; invalid_modes[2] = 2;
+    assert(phy_unserialize_data(CONST_BYTE_ARRAY(invalid_modes, sizeof(invalid_modes)), &output) == PICOKEYS_WRONG_DATA);
     puts("PASS status-light defaults, TLV roundtrip, RGB order and invalid configuration");
 }

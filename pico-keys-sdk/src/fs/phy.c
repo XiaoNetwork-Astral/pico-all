@@ -91,6 +91,11 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
     *p++ = 7;
     memcpy(p, phy->led_notifications_present ? phy->led_notifications : notifications, 7);
     p += 7;
+    *p++ = PHY_LED_MODES;
+    *p++ = 2;
+    *p++ = 1;
+    *p++ = phy->led_modes_present ? phy->led_modes :
+        (phy->led_status_present && phy->led_status[1] ? 3 : 0);
     data->len += (size_t)(p - start);
     return PICOKEYS_OK;
 }
@@ -178,6 +183,11 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                     }
                 }
                 break;
+            case PHY_LED_MODES:
+                if (tlen != 2 || v[0] != 1 || (v[1] & 0x80)) return PICOKEYS_WRONG_DATA;
+                phy->led_modes = v[1];
+                phy->led_modes_present = true;
+                break;
             case PHY_LED_NOTIFICATIONS:
                 if (tlen != 7 || v[0] != 1) return PICOKEYS_WRONG_DATA;
                 for (int i = 0; i < 3; i++) {
@@ -211,7 +221,12 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
 
 int phy_init(void) {
     memset(&phy_data, 0, sizeof(phy_data_t));
-    return phy_load();
+    int ret = phy_load();
+    if (ret == PICOKEYS_OK && !phy_data.led_modes_present) {
+        phy_data.led_modes = phy_data.led_status_present && phy_data.led_status[1] ? 3 : 0;
+        phy_data.led_modes_present = true;
+    }
+    return ret;
 }
 
 int phy_save(void) {

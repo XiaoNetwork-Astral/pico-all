@@ -359,6 +359,10 @@ static int cmd_write(void) {
             memcpy(updated.led_notifications, phy_data.led_notifications, sizeof(updated.led_notifications));
             updated.led_notifications_present = true;
         }
+        if (!updated.led_modes_present && phy_data.led_modes_present) {
+            updated.led_modes = phy_data.led_modes;
+            updated.led_modes_present = true;
+        }
         phy_data = updated;
         if (ret == PICOKEYS_OK) {
             if (phy_save() != PICOKEYS_OK) {

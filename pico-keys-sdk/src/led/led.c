@@ -37,6 +37,7 @@ static volatile uint8_t blink_color = LED_COLOR_GREEN;
 static volatile uint32_t blink_brightness = MAX_BTNESS;
 static volatile uint32_t blink_on_ms = 0;
 static volatile uint32_t blink_off_ms = 0;
+static volatile uint8_t blink_effect = 0; // 0 legacy blink, 1 breathe, 2 steady
 
 void led_set_mode(uint32_t mode) {
     led_mode = mode;
@@ -50,6 +51,7 @@ static void led_blink(uint8_t count, uint8_t color, uint32_t brightness, uint32_
     if (count == 0 || color > LED_COLOR_WHITE || on_ms == 0 || off_ms == 0 || on_ms > 4095 || off_ms > 4095) {
         return;
     }
+    blink_effect = 0;
     blink_count = count;
     blink_color = color;
     blink_brightness = brightness;
@@ -73,6 +75,17 @@ void led_notify(led_notification_t notification, uint8_t count, uint32_t on_ms, 
     }
 #endif
     led_blink(count, color, brightness, on_ms, off_ms);
+#if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
+    if (phy_data.led_modes_present) {
+        blink_effect = (phy_data.led_modes & (1u << (4 + notification))) ? 2 : 1;
+    }
+#endif
+}
+
+static float led_breath(uint32_t elapsed, uint32_t period) {
+    uint32_t phase = elapsed % period;
+    float ramp = (float)(phase < period / 2 ? period / 2 - phase : phase - period / 2) / (period / 2);
+    return ramp * ramp * (3.0f - 2.0f * ramp);
 }
 
 static void led_render(uint8_t color, uint32_t brightness, float progress) {
@@ -94,7 +107,7 @@ void led_blinking_task(void) {
     static bool breath_initialized = false;
     static bool blink_active = false;
     static uint32_t blink_started, active_on, active_off, active_brightness;
-    static uint8_t active_count, active_color;
+    static uint8_t active_count, active_color, active_effect;
     uint32_t now = board_millis();
     led_nuke_phase_t phase = nuke_phase;
     uint32_t mode = phase == LED_NUKE_CONFIRM ? MODE_NUKE_CONFIRM :
@@ -116,6 +129,7 @@ void led_blinking_task(void) {
         blink_pending = false;
         blink_started = now;
         active_count = blink_count;
+        active_effect = blink_effect;
         active_color = blink_color;
         active_brightness = blink_brightness;
         active_on = blink_on_ms;
@@ -126,7 +140,9 @@ void led_blinking_task(void) {
         uint32_t elapsed = now - blink_started;
         uint32_t cycle = active_on + active_off;
         if (elapsed / cycle < active_count) {
-            led_render(active_color, active_brightness, elapsed % cycle < active_on);
+            float progress = active_effect == 2 ? 1.0f : active_effect == 1 ?
+                led_breath(elapsed, cycle) : (float)(elapsed % cycle < active_on);
+            led_render(active_color, active_brightness, progress);
             return;
         }
         blink_active = false;
@@ -150,6 +166,15 @@ void led_blinking_task(void) {
         configured_brightness = mode == MODE_PROCESSING ? MAX_BTNESS :
             (mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT;
     }
+#if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
+    if (configured_slot >= 0 && phy_data.led_modes_present) {
+        configured_steady = (phy_data.led_modes & (1u << configured_slot)) != 0;
+        uint32_t started = configured_slot < 2 ? breath_started : mode_started;
+        led_render(configured_color, configured_brightness,
+            configured_steady ? 1.0f : led_breath(((now - started) / 10u) * 10u, 2000));
+        return;
+    }
+#endif
     (void)configured_slot;
     if (mode == MODE_PROCESSING) mode = MODE_MOUNTED;
     if (mode == MODE_MOUNTED || mode == MODE_NUKE_CONFIRM) {

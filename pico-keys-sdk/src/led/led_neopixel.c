@@ -77,10 +77,10 @@ void led_driver_init_neopixel(void) {
 
 void led_driver_color_neopixel(uint8_t color, uint32_t led_brightness, float progress) {
     static tNeopixel spx = {.index = 0, .rgb = 0};
-    if (!(phy_data.opts & PHY_OPT_DIMM)) {
+    if (!phy_data.led_modes_present && !(phy_data.opts & PHY_OPT_DIMM)) {
         progress = progress >= 0.5 ? 1 : 0;
     }
-    uint32_t led_phy_btness = phy_data.led_brightness_present ? phy_data.led_brightness : MAX_BTNESS;
+    uint32_t led_phy_btness = !phy_data.led_modes_present && phy_data.led_brightness_present ? phy_data.led_brightness : MAX_BTNESS;
     float brightness = ((float)led_brightness / MAX_BTNESS) * ((float)led_phy_btness / MAX_BTNESS) * progress;
     uint32_t pixel_color = pixel[color].rgb;
     uint8_t r = (pixel_color >> 16) & 0xFF;
