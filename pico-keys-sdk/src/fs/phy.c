@@ -22,6 +22,25 @@
 
 phy_data_t phy_data;
 
+// Brightness is encoded on the wire as 0..255; 17 is level 1 of 15.
+static const uint8_t status_defaults[10] = {1, 0, 6, 17, 6, 17, 4, 17, 3, 17};
+static const uint8_t notification_defaults[7] = {1, 2, 17, 1, 17, 1, 17};
+
+static void phy_led_defaults(phy_data_t *phy) {
+    if (!phy->led_status_present) {
+        memcpy(phy->led_status, status_defaults, sizeof(status_defaults));
+        phy->led_status_present = true;
+    }
+    if (!phy->led_notifications_present) {
+        memcpy(phy->led_notifications, notification_defaults, sizeof(notification_defaults));
+        phy->led_notifications_present = true;
+    }
+    if (!phy->led_modes_present) {
+        phy->led_modes = phy->led_status[1] ? 3 : 0;
+        phy->led_modes_present = true;
+    }
+}
+
 int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
     if (!phy || !data || data->len > data->capacity || !data->data || data->capacity - data->len < PHY_MAX_SIZE) {
         return PICOKEYS_ERR_NULL_PARAM;
@@ -81,15 +100,13 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
     }
 
     // Always advertise the supported extension and its effective defaults.
-    static const uint8_t defaults[10] = {1, 0, 6, 255, 6, 255, 4, 255, 3, 255};
     *p++ = PHY_LED_STATUS;
     *p++ = 10;
-    memcpy(p, phy->led_status_present ? phy->led_status : defaults, 10);
+    memcpy(p, phy->led_status_present ? phy->led_status : status_defaults, 10);
     p += 10;
-    static const uint8_t notifications[7] = {1, 2, 255, 1, 255, 1, 255};
     *p++ = PHY_LED_NOTIFICATIONS;
     *p++ = 7;
-    memcpy(p, phy->led_notifications_present ? phy->led_notifications : notifications, 7);
+    memcpy(p, phy->led_notifications_present ? phy->led_notifications : notification_defaults, 7);
     p += 7;
     *p++ = PHY_LED_MODES;
     *p++ = 2;
@@ -222,9 +239,8 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
 int phy_init(void) {
     memset(&phy_data, 0, sizeof(phy_data_t));
     int ret = phy_load();
-    if (ret == PICOKEYS_OK && !phy_data.led_modes_present) {
-        phy_data.led_modes = phy_data.led_status_present && phy_data.led_status[1] ? 3 : 0;
-        phy_data.led_modes_present = true;
+    if (ret == PICOKEYS_OK) {
+        phy_led_defaults(&phy_data);
     }
     return ret;
 }

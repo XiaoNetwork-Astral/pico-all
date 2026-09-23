@@ -5,7 +5,7 @@ Updates:
 
 - Added configurable security-event logging, persistent event history and signed checkpoint verification with one button confirmation
 - Audit events now record calendar timestamps after clock synchronization; older events remain readable without invented dates
-- Added independent colour, brightness and breathing/steady settings for each status light
+- Added independent colour, brightness and breathing/steady settings for each status light, with brightness defaulting to level 1
 - Added read-only factory-PIN status for automatic default handling in PicoForge All, and improved HSM object listing and applet reset behavior
 - Increased the default button-confirmation window to 60 seconds and fixed hold timing when confirmation starts late
 - Improved Enterprise Attestation status handling and management compatibility
@@ -19,7 +19,7 @@ Updates:
 
 - 新增可开关的安全事件记录、持久化日志和签名检查点验证，验证仅需一次按键确认
 - 设备校时后记录日历时间；旧日志仍可读取，不会为缺少时间信息的事件编造日期
-- 各状态灯可独立设置颜色、亮度和呼吸／常亮模式
+- 各状态灯可独立设置颜色、亮度和呼吸／常亮模式，默认亮度为 1 级
 - 新增只读的出厂 PIN 状态，供 PicoForge All 自动使用默认值；改进 HSM 对象列表及应用重置行为
 - 默认按键确认时限延长至 60 秒，修复较晚按键时长按计时不准确的问题
 - 改进企业认证状态读取及管理兼容性

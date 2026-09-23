@@ -221,5 +221,29 @@ int main(void) {
     led_set_nuke_phase(LED_NUKE_CONFIRM);
     mode(MODE_BUTTON, 41000); tick(41500);
     assert(color == LED_COLOR_RED && output_progress > 0.49f && output_progress < 0.51f);
+    // The modern per-status defaults render at level 1, including Nuke prompts.
+    const uint8_t defaults[] = {1, 0, LED_COLOR_CYAN, 17, LED_COLOR_CYAN, 17,
+                                LED_COLOR_YELLOW, 17, LED_COLOR_BLUE, 17};
+    const uint8_t notice_defaults[] = {1, LED_COLOR_GREEN, 17, LED_COLOR_RED, 17, LED_COLOR_RED, 17};
+    memcpy(phy_data.led_status, defaults, sizeof(defaults));
+    memcpy(phy_data.led_notifications, notice_defaults, sizeof(notice_defaults));
+    phy_data.led_status_present = phy_data.led_notifications_present = true;
+    led_set_nuke_phase(LED_NUKE_NONE);
+    for (uint8_t i = 0; i < 4; ++i) {
+        mode(modes[i], 44000 + i * 1000);
+        assert(brightness == 1 && output_progress == 1.0f);
+    }
+    mode(MODE_MOUNTED, 48000);
+    for (uint8_t n = 0; n < 3; ++n) {
+        led_notify((led_notification_t)n, 1, 100, 100);
+        tick(49000 + n * 1000);
+        assert(brightness == 1);
+    }
+    led_set_nuke_phase(LED_NUKE_CONFIRM);
+    tick(53000); tick(53500);
+    assert(color == LED_COLOR_RED && brightness == 1 && output_progress < 0.51f);
+    led_set_nuke_phase(LED_NUKE_UPDATE);
+    tick(54000);
+    assert(color == LED_COLOR_RED && brightness == 1 && output_progress == 1.0f);
     puts("PASS LED defaults, Nuke confirmation/execution, prompt isolation and timing");
 }

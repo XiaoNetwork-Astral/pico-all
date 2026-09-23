@@ -151,7 +151,8 @@ void led_blinking_task(void) {
     uint8_t configured_color = LED_COLOR_CYAN;
     uint32_t configured_brightness = MAX_BTNESS;
     bool configured_steady = false;
-    int configured_slot = mode == MODE_PROCESSING ? 1 : mode == MODE_MOUNTED ? 0 :
+    int configured_slot = phase == LED_NUKE_CONFIRM ? 2 : phase == LED_NUKE_UPDATE ? 3 :
+                          mode == MODE_PROCESSING ? 1 : mode == MODE_MOUNTED ? 0 :
                           mode == MODE_BUTTON ? 2 : mode == MODE_UPDATE ? 3 : -1;
 #if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
     if (configured_slot >= 0 && phy_data.led_status_present) {
@@ -167,7 +168,11 @@ void led_blinking_task(void) {
             (mode & LED_BTNESS_MASK) >> LED_BTNESS_SHIFT;
     }
 #if !defined(ENABLE_EMULATION) || defined(TEST_LED_CONFIG)
-    if (configured_slot >= 0 && phy_data.led_modes_present) {
+    if (phase != LED_NUKE_NONE) {
+        configured_color = LED_COLOR_RED;
+        configured_steady = false;
+    }
+    if (phase == LED_NUKE_NONE && configured_slot >= 0 && phy_data.led_modes_present) {
         configured_steady = (phy_data.led_modes & (1u << configured_slot)) != 0;
         uint32_t started = configured_slot < 2 ? breath_started : mode_started;
         led_render(configured_color, configured_brightness,
