@@ -214,7 +214,9 @@ static int cmd_write_config(void) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     file_t *ef = file_new(EF_DEV_CONF);
-    file_put_data(ef, CONST_BYTE_ARRAY(apdu.data + 1, apdu.nc - 1));
+    if (!ef || file_put_data(ef, CONST_BYTE_ARRAY(apdu.data + 1, apdu.nc - 1)) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     flash_commit();
 #ifndef ENABLE_EMULATION
     if (cap_supported(CAP_OTP)) {
@@ -223,7 +225,8 @@ static int cmd_write_config(void) {
     else {
         phy_data.enabled_usb_itf &= ~PHY_USB_ITF_KB;
     }
-    phy_save();
+    phy_data.enabled_usb_itf_present = true;
+    if (phy_save() != PICOKEYS_OK) return SW_EXEC_ERROR();
 #endif
     audit_append(AUDIT_CONFIG_WRITE, 0, NULL, 0);
     return SW_OK();

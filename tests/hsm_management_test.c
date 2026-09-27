@@ -9,6 +9,7 @@ static uint16_t config_len;
 static file_t configuration;
 static bool present = true;
 static unsigned confirmations;
+static int storage_result = PICOKEYS_OK;
 file_t *file_search(uint16_t fid) { assert(fid == EF_DEV_CONF); return &configuration; }
 file_t *file_new(uint16_t fid) { return file_search(fid); }
 bool file_has_data(const file_t *f) { assert(f == &configuration); return config_len != 0; }
@@ -16,6 +17,7 @@ uint32_t file_get_size(const file_t *f) { assert(f == &configuration); return co
 uint8_t *file_get_data(const file_t *f) { assert(f == &configuration); return config; }
 int file_put_data(file_t *f, const_byte_array_t data) {
     assert(f == &configuration && data.len <= sizeof(config));
+    if (storage_result != PICOKEYS_OK) return storage_result;
     memcpy(config, data.data, data.len); config_len = data.len; return PICOKEYS_OK;
 }
 void flash_commit(void) {}
@@ -61,6 +63,10 @@ int main(void) {
     assert(cap_supported(CAP_HSM));
     assert(reported(TAG_USB_ENABLED) == (0x220 | CAP_HSM));
     present = false;
+    storage_result = PICOKEYS_WRONG_DATA;
+    disabled[7] = 0;
+    assert(cmd_write_config() != 0x9000);
+    assert(cap_supported(CAP_HSM));
     assert(!(reported(TAG_USB_SUPPORTED) & CAP_HSM));
     puts("PASS: HSM defaults, legacy masks, explicit disable/enable and presence authorization");
 }

@@ -47,6 +47,10 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
     }
     uint8_t *start = data->data + data->len;
     uint8_t *p = start;
+    if ((phy->usb_product_present && !memchr(phy->usb_product, 0, sizeof(phy->usb_product))) ||
+        (phy->usb_manufacturer_present && !memchr(phy->usb_manufacturer, 0, sizeof(phy->usb_manufacturer)))) {
+        return PICOKEYS_WRONG_DATA;
+    }
     if (phy->vidpid_present) {
         *p++ = PHY_VIDPID;
         *p++ = 4;
@@ -80,6 +84,13 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
         p += strlen(phy->usb_product);
         *p++ = '\0';
     }
+    if (phy->usb_manufacturer_present) {
+        size_t len = strlen(phy->usb_manufacturer) + 1;
+        *p++ = PHY_USB_MANUFACTURER;
+        *p++ = (uint8_t)len;
+        memcpy(p, phy->usb_manufacturer, len);
+        p += len;
+    }
     if (phy->enabled_curves_present) {
         *p++ = PHY_ENABLED_CURVES;
         *p++ = 4;
@@ -97,6 +108,12 @@ int phy_serialize_data(const phy_data_t *phy, byte_buffer_t *data) {
         if (phy->led_order_present) {
             *p++ = phy->led_order;
         }
+    }
+
+    if (phy->led_order_present && !phy->led_driver_present) {
+        *p++ = PHY_LED_ORDER;
+        *p++ = 1;
+        *p++ = phy->led_order;
     }
 
     // Always advertise the supported extension and its effective defaults.
@@ -129,9 +146,22 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
         tag = *p++;
         tlen = *p++;
         if ((uint16_t)tlen > (uint16_t)(end - p)) {
-            break;
+            return PICOKEYS_WRONG_DATA;
         }
         const uint8_t *v = p;
+        // Never acknowledge malformed or unsupported settings as a successful write.
+        switch (tag) {
+            case PHY_VIDPID: case PHY_ENABLED_CURVES:
+                if (tlen != 4) return PICOKEYS_WRONG_DATA;
+                break;
+            case PHY_OPTS:
+                if (tlen != 2) return PICOKEYS_WRONG_DATA;
+                break;
+            case PHY_LED_GPIO: case PHY_LED_BTNESS: case PHY_UP_BTN: case PHY_ENABLED_USB_ITF:
+                if (tlen != 1) return PICOKEYS_WRONG_DATA;
+                break;
+            default: break;
+        }
         switch (tag) {
             case PHY_VIDPID:
                 if (tlen == 4) {
@@ -167,16 +197,16 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                 }
                 break;
             case PHY_USB_PRODUCT:
-                if (tlen > 0 && tlen <= sizeof(phy->usb_product)) {
-                    size_t copy_len = tlen;
-                    if (v[copy_len - 1] == '\0') {
-                        copy_len--;
-                    }
-                    memset(phy->usb_product, 0, sizeof(phy->usb_product));
-                    memcpy(phy->usb_product, v, copy_len);
-                    phy->usb_product_present = true;
-                }
+            case PHY_USB_MANUFACTURER: {
+                if (!tlen || tlen > 32) return PICOKEYS_WRONG_DATA;
+                size_t len = tlen - (v[tlen - 1] == 0);
+                if (len >= 32 || memchr(v, 0, len)) return PICOKEYS_WRONG_DATA;
+                char *name = tag == PHY_USB_PRODUCT ? phy->usb_product : phy->usb_manufacturer;
+                memcpy(name, v, len);
+                if (tag == PHY_USB_PRODUCT) phy->usb_product_present = len != 0;
+                else phy->usb_manufacturer_present = len != 0;
                 break;
+            }
             case PHY_ENABLED_CURVES:
                 if (tlen == 4) {
                     phy->enabled_curves = get_uint32_be(v);
@@ -191,6 +221,8 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                 }
                 break;
             case PHY_LED_DRIVER:
+                if (tlen != 1 && tlen != 2) return PICOKEYS_WRONG_DATA;
+                if (tlen == 2 && v[1] > PHY_LED_ORDER_BGR) return PICOKEYS_WRONG_DATA;
                 if (tlen >= 1) {
                     phy->led_driver = v[0];
                     phy->led_driver_present = true;
@@ -199,6 +231,11 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                         phy->led_order_present = true;
                     }
                 }
+                break;
+            case PHY_LED_ORDER:
+                if (tlen != 1 || v[0] > PHY_LED_ORDER_BGR) return PICOKEYS_WRONG_DATA;
+                phy->led_order = v[0];
+                phy->led_order_present = true;
                 break;
             case PHY_LED_MODES:
                 if (tlen != 2 || v[0] != 1 || (v[1] & 0x80)) return PICOKEYS_WRONG_DATA;
@@ -222,10 +259,11 @@ int phy_unserialize_data(const_byte_array_t data, phy_data_t *phy) {
                 phy->led_status_present = true;
                 break;
             default:
-                break;
+                return PICOKEYS_WRONG_DATA;
         }
         p += tlen;
     }
+    if (p != end) return PICOKEYS_WRONG_DATA;
     if (!phy->enabled_usb_itf_present) {
         phy->enabled_usb_itf = PHY_USB_ITF_ALL;
         phy->enabled_usb_itf_present = true;
@@ -252,7 +290,8 @@ int phy_save(void) {
     if (ret != PICOKEYS_OK) {
         return ret;
     }
-    file_put_data(ef_phy, CONST_BYTE_ARRAY(tmp, output.len));
+    ret = file_put_data(ef_phy, CONST_BYTE_ARRAY(tmp, output.len));
+    if (ret != PICOKEYS_OK) return ret;
     flash_commit();
     return PICOKEYS_OK;
 }

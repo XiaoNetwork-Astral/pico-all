@@ -16,4 +16,10 @@ static inline const char *device_product_name(void) {
 #endif
     return PICO_ALL_PRODUCT;
 }
+static inline const char *device_manufacturer_name(void) {
+#ifndef ENABLE_EMULATION
+    if (phy_data.usb_manufacturer_present) return phy_data.usb_manufacturer;
+#endif
+    return PICO_ALL_MANUFACTURER;
+}
 #endif

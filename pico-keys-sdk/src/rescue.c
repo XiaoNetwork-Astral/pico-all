@@ -363,9 +363,11 @@ static int cmd_write(void) {
             updated.led_modes = phy_data.led_modes;
             updated.led_modes_present = true;
         }
+        phy_data_t previous = phy_data;
         phy_data = updated;
         if (ret == PICOKEYS_OK) {
             if (phy_save() != PICOKEYS_OK) {
+                phy_data = previous;
                 return SW_EXEC_ERROR();
             }
             pico_audit_config_changed(1);

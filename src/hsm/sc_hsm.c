@@ -308,7 +308,7 @@ int parse_token_info(const file_t *f, int mode) {
 #else
     const char *label = device_product_name();
 #endif
-    const char *manu = PICO_ALL_MANUFACTURER;
+    const char *manu = device_manufacturer_name();
     if (mode == 1) {
         uint8_t *p = res_APDU;
         *p++ = 0x30;

@@ -336,6 +336,7 @@ uint8_t const *tud_descriptor_bos_cb(void) {
 //--------------------------------------------------------------------+
 
 // array of pointer to string descriptors
+#include "usb_string.h"
 char *string_desc_itf[5] = {0};
 char const *string_desc_arr [] = {
     (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
@@ -386,6 +387,9 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
         if (index == 3) {
             str = pico_serial_str;
         }
+        else if (index == 1) {
+            str = device_manufacturer_name();
+        }
         else if (index == 2) {
             if (phy_data.usb_product_present) {
                 str = phy_data.usb_product;
@@ -407,19 +411,15 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
         uint8_t buff_avail = sizeof(_desc_str) / sizeof(_desc_str[0]) - 1;
         if (index >= 6) {
             const char *product = phy_data.usb_product_present ? phy_data.usb_product : string_desc_arr[2];
-            uint8_t len = (uint8_t)MIN(strlen(product), buff_avail);
-            for (size_t ix = 0; ix < len; chr_count++, ix++) {
-                _desc_str[1 + chr_count] = product[ix];
-            }
+            uint8_t len = (uint8_t)usb_string_utf16(product, &_desc_str[1 + chr_count], buff_avail);
+            chr_count += len;
             buff_avail -= len;
             if (buff_avail > 0) {
                 _desc_str[1 + chr_count++] = ' ';
                 buff_avail--;
             }
         }
-        for (size_t ix = 0; ix < MIN(strlen(str), buff_avail); chr_count++, ix++) {
-            _desc_str[1 + chr_count] = str[ix];
-        }
+        chr_count += (uint8_t)usb_string_utf16(str, &_desc_str[1 + chr_count], buff_avail);
     }
 
     _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
