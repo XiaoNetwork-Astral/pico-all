@@ -15,7 +15,7 @@ Turn a **Waveshare RP2350-One** into a USB security key with FIDO2/U2F, OpenPGP/
 
 ## Download and install
 
-Download `pico_all-8.2-unsigned.uf2` from [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases/latest).
+Download `pico_all-8.3-unsigned.uf2` from [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases/latest).
 
 > [!WARNING]
 > Published firmware is unsigned; sign it yourself before installation. You can use **PicoForge All → Firmware** with your local signing key. A device with Secure Boot enabled requires its original trusted key; keep that key backed up offline.
@@ -30,7 +30,7 @@ For command-line use, download `firmware.py` and `requirements.txt` from this re
 
 ```sh
 python -m pip install -r requirements.txt
-python firmware.py sign pico_all-8.2-unsigned.uf2 -k .private/my-key.pem --new-key
+python firmware.py sign pico_all-8.3-unsigned.uf2 -k .private/my-key.pem --new-key
 python firmware.py --help
 ```
 

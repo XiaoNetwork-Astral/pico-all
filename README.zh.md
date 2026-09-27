@@ -15,7 +15,7 @@
 
 ## 下载与安装
 
-从 [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases/latest) 下载 `pico_all-8.2-unsigned.uf2`
+从 [Releases](https://github.com/XiaoNetwork-Astral/pico-all/releases/latest) 下载 `pico_all-8.3-unsigned.uf2`
 
 > [!WARNING]
 > 发布的固件未签名，需要自行签名后再安装；可使用 **PicoForge All → 固件**，选择本地签名密钥进行签名；已开启安全启动的设备必须使用原来的受信任密钥，请妥善离线备份
@@ -30,7 +30,7 @@
 
 ```sh
 python -m pip install -r requirements.txt
-python firmware.py sign pico_all-8.2-unsigned.uf2 -k .private/my-key.pem --new-key
+python firmware.py sign pico_all-8.3-unsigned.uf2 -k .private/my-key.pem --new-key
 python firmware.py --help
 ```
 

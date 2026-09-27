@@ -17,6 +17,7 @@
 
 #include "picokeys.h"
 #include "led/led.h"
+#include "button.h"
 #include "pico_time.h"
 #if defined(ESP_PLATFORM)
 #include "driver/gpio.h"
@@ -40,6 +41,10 @@ static volatile uint32_t blink_off_ms = 0;
 static volatile uint8_t blink_effect = 0; // 0 legacy blink, 1 breathe, 2 steady
 
 void led_set_mode(uint32_t mode) {
+    // CCID power/status traffic must not hide a pending HID presence request.
+    if (is_req_button_pending() && (mode == MODE_MOUNTED || mode == MODE_PROCESSING)) {
+        return;
+    }
     led_mode = mode;
 }
 

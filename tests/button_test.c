@@ -11,6 +11,7 @@ static uint32_t board_millis(void) { return now; }
 phy_data_t phy_data;
 #include "../pico-keys-sdk/src/button.c"
 queue_t usb_to_card_q;
+bool is_busy(void) { return false; }
 static uint32_t mode = MODE_MOUNTED;
 void led_set_mode(uint32_t m) { mode = m; }
 uint32_t led_get_mode(void) { return mode; }

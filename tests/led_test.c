@@ -11,6 +11,8 @@ static uint32_t board_millis(void) { return now; }
 #define TEST_LED_CONFIG
 #include "picokeys.h"
 phy_data_t phy_data;
+static bool presence_pending;
+bool is_req_button_pending(void) { return presence_pending; }
 #include "../pico-keys-sdk/src/led/led.c"
 
 static uint8_t color;
@@ -64,6 +66,11 @@ int main(void) {
     // A presence request starts visibly on, independent of clock phase.
     mode(MODE_BUTTON, 20793);
     assert(color == LED_COLOR_YELLOW);
+    presence_pending = true;
+    led_set_mode(MODE_MOUNTED); // Unrelated CCID power-on/off.
+    assert(led_get_mode() == MODE_BUTTON);
+    led_set_mode(MODE_PROCESSING);
+    assert(led_get_mode() == MODE_BUTTON);
     tick(21092);
     assert(color == LED_COLOR_YELLOW);
     tick(21093);
@@ -71,6 +78,7 @@ int main(void) {
     tick(21393);
     assert(color == LED_COLOR_YELLOW);
 
+    presence_pending = false;
     mode(MODE_MOUNTED, 22000);
     led_blink_n_times(2, LED_COLOR_RED, 180, 180);
     tick(22000);
