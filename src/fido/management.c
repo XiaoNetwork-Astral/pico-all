@@ -67,7 +67,11 @@ bool cap_supported(uint16_t cap) {
         tlv_ctx_t ctxi;
         tlv_ctx_init(BYTE_ARRAY(file_get_data(ef), file_get_size(ef)), &ctxi);
         while (tlv_walk(&ctxi, &p, &item)) {
-            if (item.tag == TAG_USB_ENABLED) {
+            if (cap == CAP_HSM && item.tag == TAG_HSM_ENABLED) {
+                return item.value.len == 1 && item.value.data[0] == 1;
+            }
+            if (cap != CAP_HSM && item.tag == TAG_USB_ENABLED &&
+                (item.value.len == 1 || item.value.len == 2)) {
                 uint16_t ecaps = item.value.data[0];
                 if (item.value.len == 2) {
                     ecaps = get_uint16_be(item.value.data);
@@ -87,6 +91,9 @@ static uint8_t _piv_aid[] = {
     5,
     0xA0, 0x00, 0x00, 0x03, 0x8,
 };
+static const uint8_t _hsm_aid[] = {
+    11, 0xE8, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x81, 0xC3, 0x1F, 0x02, 0x01
+};
 
 int man_get_config(void) {
     file_t *ef = file_search(EF_DEV_CONF);
@@ -101,6 +108,10 @@ int man_get_config(void) {
     if (app_exists(CONST_BYTE_ARRAY(_piv_aid + 1, _piv_aid[0]))) {
         caps |= CAP_PIV;
     }
+    if (app_exists(CONST_BYTE_ARRAY(_hsm_aid + 1, _hsm_aid[0]))) {
+        caps |= CAP_HSM;
+    }
+    uint16_t supported = caps;
     res_APDU[res_APDU_size++] = caps >> 8;
     res_APDU[res_APDU_size++] = caps & 0xFF;
     res_APDU[res_APDU_size++] = TAG_SERIAL;
@@ -138,6 +149,7 @@ int man_get_config(void) {
         if (cap_supported(CAP_PIV)) {
             caps |= CAP_PIV;
         }
+        if ((supported & CAP_HSM) && cap_supported(CAP_HSM)) caps |= CAP_HSM;
         res_APDU[res_APDU_size++] = caps >> 8;
         res_APDU[res_APDU_size++] = caps & 0xFF;
         res_APDU[res_APDU_size++] = TAG_DEVICE_FLAGS;
@@ -156,6 +168,29 @@ int man_get_config(void) {
         uint16_t config_len = (uint16_t)config_size;
         memcpy(res_APDU + res_APDU_size, file_get_data(ef), config_len);
         res_APDU_size += config_len;
+    }
+    // Normalize the reported mask without rewriting the user's stored settings.
+    // Older masks have no HSM bit, although HSM was always available.
+    if (supported & CAP_HSM) {
+        uint8_t *p = NULL;
+        tlv_item_t item;
+        tlv_ctx_t ctx;
+        tlv_ctx_init(BYTE_ARRAY(res_APDU + 1, res_APDU_size - 1), &ctx);
+        while (tlv_walk(&ctx, &p, &item)) {
+            if (item.tag != TAG_USB_ENABLED) continue;
+            if (item.value.len == 2) {
+                uint16_t mask = get_uint16_be(item.value.data);
+                mask = cap_supported(CAP_HSM) ? mask | CAP_HSM : mask & ~CAP_HSM;
+                put_uint16_be(mask, (uint8_t *)item.value.data);
+            } else if (item.value.len == 1 && res_APDU_size < UINT8_MAX) {
+                uint8_t *value = (uint8_t *)item.value.data;
+                memmove(value + 1, value, res_APDU + res_APDU_size - value);
+                value[-1] = 2;
+                value[0] = cap_supported(CAP_HSM) ? CAP_HSM >> 8 : 0;
+                ++res_APDU_size;
+            }
+            break;
+        }
     }
     res_APDU[0] = (uint8_t)(res_APDU_size - 1);
     return 0;

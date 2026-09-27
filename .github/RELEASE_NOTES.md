@@ -3,6 +3,7 @@
 Updates:
 
 - Keep the confirmation light active while waiting for a button press, even when background smart-card traffic updates USB state
+- Add HSM enable/disable control; disabled HSM rejects card operations while preserving keys and objects; older configurations keep HSM enabled
 
 ---
 
@@ -11,3 +12,4 @@ Updates:
 更新内容：
 
 - 修复等待按键确认时黄灯被后台智能卡通信切回待机色的问题
+- 新增 HSM 启停控制；停用后拒绝 HSM 操作并保留密钥和对象；旧配置升级后保持 HSM 可用

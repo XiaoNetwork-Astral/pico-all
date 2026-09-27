@@ -2,6 +2,16 @@ cmake_minimum_required(VERSION 3.28)
 project(pico_all_tests LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 enable_testing()
+add_executable(hsm_management_test hsm_management_test.c ../pico-keys-sdk/src/tlv.c)
+target_compile_definitions(hsm_management_test PRIVATE ENABLE_EMULATION)
+target_include_directories(hsm_management_test PRIVATE
+    ../src/fido ../pico-keys-sdk/src ../pico-keys-sdk/src/fs ../pico-keys-sdk/src/rng
+    ../pico-keys-sdk/src/otp ../pico-keys-sdk/src/usb ../pico-keys-sdk/src/usb/emulation
+    ../pico-keys-sdk/src/compat ../pico-keys-sdk/third-party/mbedtls/include
+    ../pico-keys-sdk/third-party/tinycbor/src)
+target_compile_options(hsm_management_test PRIVATE -ffunction-sections -fdata-sections -UNDEBUG)
+target_link_options(hsm_management_test PRIVATE -Wl,--gc-sections)
+add_test(NAME hsm_management_switch COMMAND hsm_management_test)
 add_executable(storage_test storage_test.c
     ../src/app_registry.c
     ../pico-keys-sdk/src/fs/file.c

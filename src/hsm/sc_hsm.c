@@ -16,6 +16,7 @@
  */
 
 #include "device_identity.h"
+#include "../fido/management.h"
 #include <stdio.h>
 #include "picokeys.h"
 #include "serial.h"
@@ -62,6 +63,7 @@ extern uint8_t hd_keytype;
 extern file_t *ef_puk_aut;
 
 static int sc_hsm_select_aid(app_t *a, uint8_t force) {
+    if (!cap_supported(CAP_HSM)) return PICOKEYS_ERR_FILE_NOT_FOUND;
     (void) force;
     a->process_apdu = sc_hsm_process_apdu;
     a->unload = sc_hsm_unload;
@@ -979,6 +981,10 @@ static const cmd_t cmds[] = {
 };
 
 int sc_hsm_process_apdu(void) {
+    if (!cap_supported(CAP_HSM)) {
+        sc_hsm_unload();
+        return SW_CONDITIONS_NOT_SATISFIED();
+    }
     uint32_t ne = apdu.ne;
     hsm_object_authorization_command_set_secure_messaging(false);
     int r = sm_unwrap();

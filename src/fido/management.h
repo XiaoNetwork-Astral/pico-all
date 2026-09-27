@@ -37,6 +37,8 @@
 #define TAG_REBOOT 0x0C
 #define TAG_NFC_SUPPORTED 0x0D
 #define TAG_NFC_ENABLED 0x0E
+// Pico All extension; absence preserves HSM availability in older configurations.
+#define TAG_HSM_ENABLED 0x80
 
 #define CAP_OTP 0x01
 #define CAP_U2F 0x02
@@ -45,6 +47,7 @@
 #define CAP_PIV 0x10
 #define CAP_OPENPGP 0x08
 #define CAP_HSMAUTH 0x100
+#define CAP_HSM 0x4000
 
 #define FLAG_REMOTE_WAKEUP 0x40
 #define FLAG_EJECT 0x80
